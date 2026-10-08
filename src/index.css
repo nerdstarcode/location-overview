@@ -1,0 +1,165 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Override Tailwind's default blue ramp with NTT DATA Future Blue so every
+     existing blue-* utility across the app lands on-brand. */
+  --color-blue-50: #e7f2fb;
+  --color-blue-100: #cfe6f7;
+  --color-blue-200: #a6d2f1;
+  --color-blue-300: #6fb7e8;
+  --color-blue-400: #19a3fc; /* Future Blue 50 */
+  --color-blue-500: #0072bc; /* Future Blue */
+  --color-blue-600: #0072bc;
+  --color-blue-700: #005b96; /* Future Blue 150 */
+  --color-blue-800: #004d7e;
+  --color-blue-900: #073763;
+
+  --color-brand-primary-future-blue: #0072bc;
+  --color-brand-primary-smart-navy: #070f26;
+  --color-brand-primary-white: #ffffff;
+  --color-brand-primary-black: #000000;
+
+  --color-brand-accent-primary-future-blue: #0072bc;
+  --color-brand-accent-primary-future-blue-50: #19a3fc;
+  --color-brand-accent-primary-future-blue-150: #005b96;
+
+  --color-brand-action-warning: #ffc400;
+  --color-brand-action-success: #00cb5d;
+  --color-brand-action-alert: #ff7a00;
+  --color-brand-action-danger: #e42600;
+  --color-brand-action-info: #19a3fc;
+
+  --color-brand-neutral-gray-base: #040914;
+  --color-brand-neutral-gray-darkest: #151d2c;
+  --color-brand-neutral-gray-middle: #1f2a3a;
+  --color-brand-neutral-gray-darker: #213543;
+  --color-brand-neutral-gray-dark: #374956;
+  --color-brand-neutral-gray-blue: #586671;
+  --color-brand-neutral-gray: #828c94;
+  --color-brand-neutral-gray-light: #abb3b8;
+  --color-brand-neutral-gray-lightly: #c0c6ca;
+  --color-brand-neutral-gray-lighter: #d5d9db;
+  --color-brand-neutral-gray-lightest: #ececec;
+  --color-brand-neutral-gray-uber-light: #f8f8f8;
+
+  --color-brand-text-reading-gray-50: #e8e8e8;
+  --color-brand-text-reading-gray: #2e404d;
+
+  --color-brand-complementary-purple: #753bbd;
+  --color-brand-complementary-cyan: #2cd5b6;
+  --color-brand-complementary-green-150: #068941;
+  --color-brand-complementary-pink: #d92373;
+
+  --color-brand-50: #e7f2fb;
+  --color-brand-100: #cfe6f7;
+  --color-brand-500: #0072bc;
+  --color-brand-600: #0072bc;
+  --color-brand-700: #005b96;
+  --color-brand-900: #073763;
+
+  --font-sans: 'Noto Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Noto Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Tokens consumidos via var(--x) pelos componentes. Dark mode segue o tema
+   do sistema por padrão; data-theme="light"/"dark" força uma escolha manual. */
+:root {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --bg-elevated: #ffffff;
+  --text: #374956;
+  --text-h: #151d2c;
+  --border: #d5d9db;
+  --code-bg: #f8f8f8;
+  --social-bg: #ececec;
+  --shadow: 0 4px 12px rgba(4, 9, 20, 0.08);
+  --accent: #0072bc;
+  --accent-bg: #e7f2fb;
+  --accent-border: #0072bc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --bg: #070f26;
+    --bg-elevated: #151d2c;
+    --text: #c0c6ca;
+    --text-h: #f8f8f8;
+    --border: #374956;
+    --code-bg: #1f2a3a;
+    --social-bg: #213543;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --accent: #19a3fc;
+    --accent-bg: #0d2a44;
+    --accent-border: #19a3fc;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #070f26;
+  --bg-elevated: #151d2c;
+  --text: #c0c6ca;
+  --text-h: #f8f8f8;
+  --border: #374956;
+  --code-bg: #1f2a3a;
+  --social-bg: #213543;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --accent: #19a3fc;
+  --accent-bg: #0d2a44;
+  --accent-border: #19a3fc;
+}
+
+/* Alto contraste (data-high-contrast="true", ver HighContrastToggle): empurra
+   texto/fundo para os extremos (preto/branco puro) e engrossa as bordas —
+   independente do tema claro/escuro escolhido, então cada bloco abaixo
+   sobrescreve o tema correspondente (claro por padrão, depois escuro). */
+:root[data-high-contrast='true'] {
+  --bg: #ffffff;
+  --bg-elevated: #ffffff;
+  --text: #000000;
+  --text-h: #000000;
+  --border: #000000;
+  --code-bg: #ececec;
+  --social-bg: #d5d9db;
+  --accent: #003b70;
+  --accent-bg: #ffffff;
+  --accent-border: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light'])[data-high-contrast='true'] {
+    --bg: #000000;
+    --bg-elevated: #000000;
+    --text: #ffffff;
+    --text-h: #ffffff;
+    --border: #ffffff;
+    --code-bg: #1a1a1a;
+    --social-bg: #333333;
+    --accent: #7cc7ff;
+    --accent-bg: #000000;
+    --accent-border: #ffffff;
+  }
+}
+
+:root[data-theme='dark'][data-high-contrast='true'] {
+  --bg: #000000;
+  --bg-elevated: #000000;
+  --text: #ffffff;
+  --text-h: #ffffff;
+  --border: #ffffff;
+  --code-bg: #1a1a1a;
+  --social-bg: #333333;
+  --accent: #7cc7ff;
+  --accent-bg: #000000;
+  --accent-border: #ffffff;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
