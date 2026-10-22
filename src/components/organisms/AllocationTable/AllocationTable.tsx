@@ -1,8 +1,8 @@
 import { useCallback, useId, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import type { TableMeta } from '@tanstack/react-table'
 import { Button } from '../../atoms/Button/Button'
 import { DataTable } from '../DataTable/DataTable'
 import { MultiSelectFilter } from '../../molecules/MultiSelectFilter/MultiSelectFilter'
-import { Pagination } from '../../molecules/Pagination/Pagination'
 import {
   ALLOCATION_COLUMNS,
   deriveSprintPoints,
@@ -41,8 +41,6 @@ export function AllocationTable({ initialRows }: AllocationTableProps) {
   const [rows, setRows] = useState<AllocationRow[]>(() => (persistent ? loadAllocations() : initialRows))
   const [fileName, setFileName] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({})
   const inputRef = useRef<HTMLInputElement>(null)
   const inputId = useId()
@@ -71,22 +69,6 @@ export function AllocationTable({ initialRows }: AllocationTableProps) {
     )
   }, [rows, columnFilters, filterValue])
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-
-  // Reseta a página ao trocar de dataset ou de filtro — ajuste de estado durante a
-  // renderização (padrão recomendado pelo React) em vez de um efeito com setState.
-  const [prevResetKey, setPrevResetKey] = useState('')
-  const resetKey = `${rows.length}|${JSON.stringify(columnFilters)}`
-  if (resetKey !== prevResetKey) {
-    setPrevResetKey(resetKey)
-    if (page !== 1) setPage(1)
-  }
-
-  const pageRows = useMemo(() => {
-    const start = (page - 1) * pageSize
-    return filteredRows.slice(start, start + pageSize)
-  }, [filteredRows, page, pageSize])
-
   function handleColumnFilterChange(field: string, values: string[]) {
     setColumnFilters((prev) => ({ ...prev, [field]: values }))
   }
@@ -114,20 +96,25 @@ export function AllocationTable({ initialRows }: AllocationTableProps) {
     }
   }
 
-  function handleEditRow(key: string, field: keyof AllocationRow, value: string) {
-    setRows((prev) => {
-      const next = prev.map((row) => {
-        if (getAllocationKey(row) !== key) return row
-        const updated: AllocationRow = {
-          ...row,
-          [field]: NUMERIC_FIELDS.has(field) ? toNumber(value) : value,
-        }
-        return { ...updated, ...deriveSprintPoints(updated) }
-      })
-      if (persistent) saveAllocations(next)
-      return next
-    })
-  }
+  const tableMeta = useMemo<TableMeta<AllocationRow>>(
+    () => ({
+      updateRow: (key, field, value) =>
+        setRows((prev) => {
+          const next = prev.map((row) => {
+            if (getAllocationKey(row) !== key) return row
+            const updated: AllocationRow = {
+              ...row,
+              [field]: NUMERIC_FIELDS.has(field) ? toNumber(value) : value,
+            }
+            return { ...updated, ...deriveSprintPoints(updated) }
+          })
+          if (persistent) saveAllocations(next)
+          return next
+        }),
+      squadDisplayName: (name) => resolveSquadName(squads, name),
+    }),
+    [persistent, squads],
+  )
 
   function handleClear() {
     clearAllocations()
@@ -164,41 +151,28 @@ export function AllocationTable({ initialRows }: AllocationTableProps) {
 
       {error && <p className="text-sm text-brand-action-danger">{error}</p>}
 
-      {rows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          {TEXT_FILTER_FIELDS.map(({ field, label }) => (
-            <MultiSelectFilter
-              key={field}
-              label={label}
-              options={filterOptions[field] ?? []}
-              selected={columnFilters[field] ?? []}
-              onChange={(values) => handleColumnFilterChange(field, values)}
-            />
-          ))}
-        </div>
-      )}
-
       <DataTable
         columns={ALLOCATION_COLUMNS}
-        data={pageRows}
+        data={filteredRows}
         emptyMessage="Importe uma planilha para visualizar a alocação."
-        meta={{ updateRow: handleEditRow, squadDisplayName: (name) => resolveSquadName(squads, name) }}
+        meta={tableMeta}
+        searchPlaceholder="Buscar alocação…"
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        pageResetKey={JSON.stringify(columnFilters)}
+        toolbar={
+          rows.length > 0
+            ? TEXT_FILTER_FIELDS.map(({ field, label }) => (
+                <MultiSelectFilter
+                  key={field}
+                  label={label}
+                  options={filterOptions[field] ?? []}
+                  selected={columnFilters[field] ?? []}
+                  onChange={(values) => handleColumnFilterChange(field, values)}
+                />
+              ))
+            : undefined
+        }
       />
-
-      {rows.length > 0 && (
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          total={filteredRows.length}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setPage(1)
-          }}
-          pageSizeOptions={PAGE_SIZE_OPTIONS}
-        />
-      )}
     </div>
   )
 }

@@ -2,7 +2,6 @@ import { useId, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Button } from '../../atoms/Button/Button'
 import { DataTable } from '../DataTable/DataTable'
 import { MultiSelectFilter } from '../../molecules/MultiSelectFilter/MultiSelectFilter'
-import { Pagination } from '../../molecules/Pagination/Pagination'
 import { WORK_ITEM_COLUMNS, parseWorkItemsFile, splitTags, type WorkItemRow } from '../../../lib/workItems'
 import { clearWorkItems, loadWorkItems, mergeWorkItems, saveWorkItems } from '../../../lib/workItemsStorage'
 import { loadSquads, type Squad } from '../../../lib/squadsStorage'
@@ -56,8 +55,6 @@ export function WorkItemsTable({ initialRows }: WorkItemsTableProps) {
   const [rows, setRows] = useState<WorkItemRow[]>(() => (persistent ? loadWorkItems() : initialRows))
   const [fileName, setFileName] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({})
   const [squads] = useState<Squad[]>(loadSquads)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -82,22 +79,6 @@ export function WorkItemsTable({ initialRows }: WorkItemsTableProps) {
       activeFilters.every(({ def, values }) => def.getValues(row).some((value) => values.includes(value))),
     )
   }, [rows, columnFilters, filterFields])
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-
-  // Reseta a página ao trocar de dataset ou de filtro — ajuste de estado durante a
-  // renderização (padrão recomendado pelo React) em vez de um efeito com setState.
-  const [prevResetKey, setPrevResetKey] = useState('')
-  const resetKey = `${rows.length}|${JSON.stringify(columnFilters)}`
-  if (resetKey !== prevResetKey) {
-    setPrevResetKey(resetKey)
-    if (page !== 1) setPage(1)
-  }
-
-  const pageRows = useMemo(() => {
-    const start = (page - 1) * pageSize
-    return filteredRows.slice(start, start + pageSize)
-  }, [filteredRows, page, pageSize])
 
   function handleColumnFilterChange(field: string, values: string[]) {
     setColumnFilters((prev) => ({ ...prev, [field]: values }))
@@ -161,40 +142,27 @@ export function WorkItemsTable({ initialRows }: WorkItemsTableProps) {
 
       {error && <p className="text-sm text-brand-action-danger">{error}</p>}
 
-      {rows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          {filterFields.map(({ field, label }) => (
-            <MultiSelectFilter
-              key={field}
-              label={label}
-              options={filterOptions[field] ?? []}
-              selected={columnFilters[field] ?? []}
-              onChange={(values) => handleColumnFilterChange(field, values)}
-            />
-          ))}
-        </div>
-      )}
-
       <DataTable
         columns={WORK_ITEM_COLUMNS}
-        data={pageRows}
+        data={filteredRows}
         emptyMessage="Importe um arquivo para visualizar os work items."
+        searchPlaceholder="Buscar work item…"
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        pageResetKey={JSON.stringify(columnFilters)}
+        toolbar={
+          rows.length > 0
+            ? filterFields.map(({ field, label }) => (
+                <MultiSelectFilter
+                  key={field}
+                  label={label}
+                  options={filterOptions[field] ?? []}
+                  selected={columnFilters[field] ?? []}
+                  onChange={(values) => handleColumnFilterChange(field, values)}
+                />
+              ))
+            : undefined
+        }
       />
-
-      {rows.length > 0 && (
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          total={filteredRows.length}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setPage(1)
-          }}
-          pageSizeOptions={PAGE_SIZE_OPTIONS}
-        />
-      )}
     </div>
   )
 }

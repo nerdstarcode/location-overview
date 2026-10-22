@@ -200,55 +200,66 @@ export function AllocationsOverview() {
     setAllocations(deletePersonAllocation(id))
   }
 
+  // Coluna só com texto derivado: o mesmo formatador alimenta a célula e a busca.
+  function derivedColumn<T>(id: string, header: string, format: (row: T) => string, numeric = false): ColumnDef<T, unknown> {
+    return {
+      id,
+      header,
+      cell: ({ row }) => format(row.original),
+      meta: { searchValue: format, ...(numeric && { align: 'right', numeric: true }) },
+    }
+  }
+
   const groupColumns: ColumnDef<GroupSummary, unknown>[] = [
-    { id: 'squad', header: 'Squad', cell: ({ row }) => row.original.squad.name },
-    { id: 'sprint', header: 'Sprint', cell: ({ row }) => formatSprintLabel(row.original.sprint) },
-    { id: 'capacity', header: 'Capacity Points', meta: { align: 'right', numeric: true }, cell: ({ row }) => row.original.capacityPoints.toFixed(1) },
-    { id: 'max', header: 'Max Points', meta: { align: 'right', numeric: true }, cell: ({ row }) => row.original.maxPoints.toFixed(1) },
-    { id: 'storyPoints', header: 'Story Points', meta: { align: 'right', numeric: true }, cell: ({ row }) => row.original.storyPoints },
+    derivedColumn('squad', 'Squad', (group) => group.squad.name),
+    derivedColumn('sprint', 'Sprint', (group) => formatSprintLabel(group.sprint)),
+    derivedColumn('capacity', 'Capacity Points', (group) => group.capacityPoints.toFixed(1), true),
+    derivedColumn('max', 'Max Points', (group) => group.maxPoints.toFixed(1), true),
+    derivedColumn('storyPoints', 'Story Points', (group) => String(group.storyPoints), true),
   ]
 
+  // Sem grupo ativo as colunas calculadas mostram "—".
+  function forActiveGroup(format: (entry: PersonAllocation, group: GroupSummary) => string | number) {
+    return (entry: PersonAllocation) => (activeGroup ? String(format(entry, activeGroup)) : '—')
+  }
+
   const entryColumns: ColumnDef<PersonAllocation, unknown>[] = [
-    { id: 'person', header: 'Pessoa', cell: ({ row }) => peopleById.get(row.original.personId)?.nome ?? '—' },
+    derivedColumn('person', 'Pessoa', (entry) => peopleById.get(entry.personId)?.nome ?? '—'),
     { accessorKey: 'percentage', header: '%', meta: { align: 'right', numeric: true } },
-    {
-      id: 'days',
-      header: 'Dias',
-      meta: { align: 'right', numeric: true },
-      cell: ({ row }) => (activeGroup ? computeAllocatedDays(row.original.percentage, activeGroup.sprint.totalValidDays) : '—'),
-    },
-    {
-      id: 'capacity',
-      header: 'Capacity Points',
-      meta: { align: 'right', numeric: true },
-      cell: ({ row }) =>
-        activeGroup
-          ? pointsForEntry(row.original, activeGroup.sprint, peopleById.get(row.original.personId), levels).capacity.toFixed(1)
-          : '—',
-    },
-    {
-      id: 'max',
-      header: 'Max Points',
-      meta: { align: 'right', numeric: true },
-      cell: ({ row }) =>
-        activeGroup ? pointsForEntry(row.original, activeGroup.sprint, peopleById.get(row.original.personId), levels).max.toFixed(1) : '—',
-    },
-    {
-      id: 'storyPoints',
-      header: 'Story Points',
-      meta: { align: 'right', numeric: true },
-      cell: ({ row }) =>
-        activeGroup ? personPoints(workItems, activeGroup.squad, activeGroup.sprint, peopleById.get(row.original.personId)).storyPoints : '—',
-    },
-    {
-      id: 'pontoExecucao',
-      header: 'Pontos de Execução',
-      meta: { align: 'right', numeric: true },
-      cell: ({ row }) =>
-        activeGroup
-          ? personPoints(workItems, activeGroup.squad, activeGroup.sprint, peopleById.get(row.original.personId)).pontoExecucao
-          : '—',
-    },
+    derivedColumn(
+      'days',
+      'Dias',
+      forActiveGroup((entry, group) => computeAllocatedDays(entry.percentage, group.sprint.totalValidDays)),
+      true,
+    ),
+    derivedColumn(
+      'capacity',
+      'Capacity Points',
+      forActiveGroup((entry, group) =>
+        pointsForEntry(entry, group.sprint, peopleById.get(entry.personId), levels).capacity.toFixed(1),
+      ),
+      true,
+    ),
+    derivedColumn(
+      'max',
+      'Max Points',
+      forActiveGroup((entry, group) => pointsForEntry(entry, group.sprint, peopleById.get(entry.personId), levels).max.toFixed(1)),
+      true,
+    ),
+    derivedColumn(
+      'storyPoints',
+      'Story Points',
+      forActiveGroup((entry, group) => personPoints(workItems, group.squad, group.sprint, peopleById.get(entry.personId)).storyPoints),
+      true,
+    ),
+    derivedColumn(
+      'pontoExecucao',
+      'Pontos de Execução',
+      forActiveGroup(
+        (entry, group) => personPoints(workItems, group.squad, group.sprint, peopleById.get(entry.personId)).pontoExecucao,
+      ),
+      true,
+    ),
     {
       id: 'actions',
       header: '',

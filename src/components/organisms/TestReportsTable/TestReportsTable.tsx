@@ -73,16 +73,15 @@ export function TestReportsTable() {
     setReports(deleteTestReport(id))
   }
 
+  const squadLabel = (report: TestReport) => squadsById.get(report.squadId)?.name ?? '—'
+  const sprintLabel = (report: TestReport) => {
+    const sprint = sprintsById.get(report.sprintId)
+    return sprint ? formatSprintLabel(sprint) : '—'
+  }
+
   const columns: ColumnDef<TestReport, unknown>[] = [
-    { id: 'squad', header: 'Squad', cell: ({ row }) => squadsById.get(row.original.squadId)?.name ?? '—' },
-    {
-      id: 'sprint',
-      header: 'Sprint',
-      cell: ({ row }) => {
-        const sprint = sprintsById.get(row.original.sprintId)
-        return sprint ? formatSprintLabel(sprint) : '—'
-      },
-    },
+    { id: 'squad', header: 'Squad', cell: ({ row }) => squadLabel(row.original), meta: { searchValue: squadLabel } },
+    { id: 'sprint', header: 'Sprint', cell: ({ row }) => sprintLabel(row.original), meta: { searchValue: sprintLabel } },
     { accessorKey: 'testPoints', header: 'Test Points', meta: { align: 'right', numeric: true } },
     { accessorKey: 'runsPercent', header: 'Runs (%)', meta: { align: 'right', numeric: true } },
     { accessorKey: 'passedPercent', header: 'Passed (%)', meta: { align: 'right', numeric: true } },

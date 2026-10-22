@@ -31,7 +31,13 @@ const COLUMNS: ColumnDef<SprintAllocationEntry, unknown>[] = [
         row.original.nivel
       ),
   },
-  { id: 'percentage', header: '%', accessorFn: (row) => row.percentage, cell: ({ row }) => `${row.original.percentage}%`, meta: NUMERIC },
+  {
+    id: 'percentage',
+    header: '%',
+    accessorFn: (row) => row.percentage,
+    cell: ({ row }) => `${row.original.percentage}%`,
+    meta: { ...NUMERIC, searchValue: (row) => `${row.percentage}%` },
+  },
   { accessorKey: 'days', header: 'Dias', meta: NUMERIC },
   { accessorKey: 'capacity', header: 'Capacity', meta: NUMERIC },
   { accessorKey: 'max', header: 'Max', meta: NUMERIC },

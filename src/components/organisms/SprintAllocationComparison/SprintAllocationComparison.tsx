@@ -40,6 +40,10 @@ function formatRange(min: number | null, max: number | null): string {
   return min === null || max === null ? '—' : `${min} – ${max}`
 }
 
+function formatPercentage(row: AllocationComparisonRow): string {
+  return row.percentage === null ? '—' : `${row.percentage}%`
+}
+
 const NUMERIC = { align: 'right', numeric: true } as const
 
 const COLUMNS: ColumnDef<AllocationComparisonRow, unknown>[] = [
@@ -59,8 +63,8 @@ const COLUMNS: ColumnDef<AllocationComparisonRow, unknown>[] = [
     id: 'percentage',
     header: 'Alocação',
     accessorFn: (row) => row.percentage ?? -1,
-    cell: ({ row }) => (row.original.percentage === null ? '—' : `${row.original.percentage}%`),
-    meta: NUMERIC,
+    cell: ({ row }) => formatPercentage(row.original),
+    meta: { ...NUMERIC, searchValue: formatPercentage },
   },
   { accessorKey: 'capacity', header: 'Capacity', meta: NUMERIC },
   { accessorKey: 'max', header: 'Max', meta: NUMERIC },
@@ -69,13 +73,14 @@ const COLUMNS: ColumnDef<AllocationComparisonRow, unknown>[] = [
     header: 'Faixa QA (SP)',
     accessorFn: (row) => row.expectedMin ?? -1,
     cell: ({ row }) => formatRange(row.original.expectedMin, row.original.expectedMax),
-    meta: NUMERIC,
+    meta: { ...NUMERIC, searchValue: (row) => formatRange(row.expectedMin, row.expectedMax) },
   },
   { accessorKey: 'assigned', header: 'SP atribuídos', meta: NUMERIC },
   { accessorKey: 'delivered', header: 'SP entregues', meta: NUMERIC },
   {
     accessorKey: 'status',
     header: 'Status',
+    meta: { searchValue: (row) => STATUS_LABEL[row.status] },
     cell: ({ row }) => (
       <span className={clsx('rounded-full px-2 py-0.5 text-xs font-medium', STATUS_CLASS[row.original.status])}>
         {STATUS_LABEL[row.original.status]}

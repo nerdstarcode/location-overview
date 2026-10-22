@@ -55,6 +55,7 @@ export function PeopleTable() {
     {
       accessorKey: 'squadIds',
       header: 'Squads',
+      meta: { searchValue: (person) => person.squadIds.map((id) => squadNameById.get(id) ?? id).join(' ') },
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-1">
           {row.original.squadIds.map((id) => (

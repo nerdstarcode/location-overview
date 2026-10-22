@@ -57,7 +57,7 @@ const USER_STORY_COLUMNS: ColumnDef<UserStoryTasks, unknown>[] = [
     header: 'Tasks fechadas',
     accessorFn: (row) => row.tasksDone,
     cell: ({ row }) => `${row.original.tasksDone}/${row.original.tasks}`,
-    meta: NUMERIC,
+    meta: { ...NUMERIC, searchValue: (row) => `${row.tasksDone}/${row.tasks}` },
   },
 ]
 

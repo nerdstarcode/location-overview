@@ -122,6 +122,7 @@ export const WORK_ITEM_COLUMNS: ColumnDef<WorkItemRow, unknown>[] = [
   {
     accessorKey: 'isDelayed',
     header: 'Delayed',
+    meta: { searchValue: (row) => (row.isDelayed ? 'Delayed' : '') },
     cell: ({ row }) => (row.original.isDelayed ? <Chip label="Delayed" /> : null),
   },
   { accessorKey: 'storyPoints', header: 'Story Points', meta: { align: 'right', numeric: true } },

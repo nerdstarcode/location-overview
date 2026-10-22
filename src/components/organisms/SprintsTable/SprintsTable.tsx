@@ -57,7 +57,12 @@ export function SprintsTable() {
   }
 
   const columns: ColumnDef<Sprint, unknown>[] = [
-    { accessorKey: 'number', header: 'Sprint', meta: { align: 'right', headerAlign: 'left', numeric: true }, cell: ({ row }) => formatSprintLabel(row.original) },
+    {
+      accessorKey: 'number',
+      header: 'Sprint',
+      meta: { align: 'right', headerAlign: 'left', numeric: true, searchValue: formatSprintLabel },
+      cell: ({ row }) => formatSprintLabel(row.original),
+    },
     { accessorKey: 'startDate', header: 'Início' },
     { accessorKey: 'endDate', header: 'Fim' },
     { accessorKey: 'totalValidDays', header: 'Dias válidos', meta: { align: 'right', numeric: true } },

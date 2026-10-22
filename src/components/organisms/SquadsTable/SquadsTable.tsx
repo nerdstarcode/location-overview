@@ -105,6 +105,7 @@ export function SquadsTable() {
     {
       id: 'aliases',
       header: 'Nomes alternativos',
+      meta: { searchValue: (squad) => (squad.aliases ?? []).join(' ') },
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-1">
           {(row.original.aliases ?? []).map((alias) => (
@@ -116,6 +117,7 @@ export function SquadsTable() {
     {
       id: 'members',
       header: 'Membros',
+      meta: { searchValue: (squad) => membersOf(squad.id).map((person) => person.nome).join(' ') },
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-1">
           {membersOf(row.original.id).map((person) => (

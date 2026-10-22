@@ -12,6 +12,10 @@ const TIME_FRAME_LABEL: Record<AzureIterationTimeFrame, string> = {
   future: 'Futura',
 }
 
+function timeFrameLabel(iteration: AzureIteration): string {
+  return TIME_FRAME_LABEL[iteration.attributes.timeFrame] ?? iteration.attributes.timeFrame
+}
+
 export interface IterationsListProps {
   iterations: AzureIteration[]
   onOpen: (iteration: AzureIteration) => void
@@ -27,13 +31,26 @@ export function IterationsList({ iterations, onOpen }: IterationsListProps) {
   const columns = useMemo<ColumnDef<AzureIteration, unknown>[]>(
     () => [
       { accessorKey: 'name', header: 'Sprint' },
-      { id: 'start', header: 'Início', accessorFn: (it) => it.attributes.startDate ?? '', cell: ({ row }) => formatDateBR(row.original.attributes.startDate) },
-      { id: 'end', header: 'Fim', accessorFn: (it) => it.attributes.finishDate ?? '', cell: ({ row }) => formatDateBR(row.original.attributes.finishDate) },
+      {
+        id: 'start',
+        header: 'Início',
+        accessorFn: (it) => it.attributes.startDate ?? '',
+        cell: ({ row }) => formatDateBR(row.original.attributes.startDate),
+        meta: { searchValue: (it) => formatDateBR(it.attributes.startDate) },
+      },
+      {
+        id: 'end',
+        header: 'Fim',
+        accessorFn: (it) => it.attributes.finishDate ?? '',
+        cell: ({ row }) => formatDateBR(row.original.attributes.finishDate),
+        meta: { searchValue: (it) => formatDateBR(it.attributes.finishDate) },
+      },
       {
         id: 'timeFrame',
         header: 'Situação',
         accessorFn: (it) => it.attributes.timeFrame,
-        cell: ({ row }) => <Chip label={TIME_FRAME_LABEL[row.original.attributes.timeFrame] ?? row.original.attributes.timeFrame} />,
+        cell: ({ row }) => <Chip label={timeFrameLabel(row.original)} />,
+        meta: { searchValue: timeFrameLabel },
       },
       { accessorKey: 'path', header: 'Iteration Path' },
       {

@@ -52,7 +52,7 @@ export const ComDadosImportados: Story = {
   args: { initialRows: sampleRows },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await expect(canvas.getByText('Ada Lovelace')).toBeInTheDocument()
+    await expect(canvas.getByDisplayValue('Ada Lovelace')).toBeInTheDocument()
     await expect(canvas.getByText('1 linha')).toBeInTheDocument()
   },
 }
@@ -68,7 +68,7 @@ export const ComPaginacao: Story = {
     const canvas = within(canvasElement)
     await expect(canvas.getByText('60 linhas')).toBeInTheDocument()
     await expect(canvas.getByText('Página 1 de 3')).toBeInTheDocument()
-    await expect(canvas.getByText('Pessoa 1')).toBeInTheDocument()
-    await expect(canvas.queryByText('Pessoa 26')).not.toBeInTheDocument()
+    await expect(canvas.getByDisplayValue('Pessoa 1')).toBeInTheDocument()
+    await expect(canvas.queryByDisplayValue('Pessoa 26')).not.toBeInTheDocument()
   },
 }

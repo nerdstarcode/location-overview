@@ -73,6 +73,7 @@ export const ALLOCATION_COLUMNS: ColumnDef<AllocationRow, unknown>[] = [
   {
     accessorKey: 'squad',
     header: 'Squad',
+    meta: { searchValue: (row, tableMeta) => tableMeta?.squadDisplayName?.(row.squad) ?? row.squad },
     cell: ({ row, table }) => (
       <EditableCell
         value={table.options.meta?.squadDisplayName?.(row.original.squad) ?? row.original.squad}
