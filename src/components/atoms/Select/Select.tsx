@@ -21,6 +21,8 @@ export interface SelectProps {
   noOptionsText?: string
   /** Esconde o botão de limpar (X). */
   disableClearable?: boolean
+  /** sm: 40px de altura, para barras de ação com inputs e botões compactos. */
+  size?: 'md' | 'sm'
 }
 
 interface PopupPosition {
@@ -64,6 +66,7 @@ export function Select({
   'aria-label': ariaLabel,
   noOptionsText = 'Nenhuma opção',
   disableClearable = false,
+  size = 'md',
 }: SelectProps) {
   const generatedId = useId()
   const inputId = id ?? `${generatedId}-input`
@@ -192,7 +195,7 @@ export function Select({
         onFocus={(event) => event.target.select()}
         onBlur={closePopup}
         onKeyDown={handleKeyDown}
-        className="h-14 w-full rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] pl-3 pr-16 text-base text-[var(--text-h)] outline-none transition-colors focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className={`${size === 'sm' ? 'h-10 text-sm' : 'h-14 text-base'} w-full rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] pl-3 pr-16 text-[var(--text-h)] outline-none transition-colors focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50`}
       />
       <div className="absolute inset-y-0 right-2 flex items-center gap-0.5">
         {showClear && (
