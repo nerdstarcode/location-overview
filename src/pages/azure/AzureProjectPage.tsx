@@ -114,9 +114,10 @@ export function AzureProjectPage() {
           <label className="flex w-full max-w-sm flex-col gap-1 text-sm font-medium text-[var(--text-h)]">
             Squad (Team)
             <Select
+              disableClearable
               value={selectedTeam?.id ?? ''}
-              onChange={(e) => {
-                selectTeam(e.target.value)
+              onChange={(value) => {
+                selectTeam(value)
                 setSyncMessage(null)
                 setSelectedIds(new Set())
                 setBatchMessage(null)

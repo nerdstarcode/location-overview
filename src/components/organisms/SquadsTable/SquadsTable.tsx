@@ -261,7 +261,7 @@ export function SquadsTable() {
               <label className="text-xs text-[var(--text)]">Squad principal</label>
               <Select
                 value={mergeDraft.targetId}
-                onChange={(e) => setMergeDraft({ ...mergeDraft, targetId: e.target.value })}
+                onChange={(value) => setMergeDraft({ ...mergeDraft, targetId: value })}
                 placeholder="Selecione uma squad"
                 options={squads
                   .filter((squad) => squad.id !== mergeDraft.source.id)

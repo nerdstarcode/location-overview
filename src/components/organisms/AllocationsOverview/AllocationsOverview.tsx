@@ -313,7 +313,7 @@ export function AllocationsOverview() {
             <label className="text-xs text-[var(--text)]">Pessoa</label>
             <Select
               value={draft.personId}
-              onChange={(e) => setDraft({ ...draft, personId: e.target.value, squadId: '' })}
+              onChange={(value) => setDraft({ ...draft, personId: value, squadId: '' })}
               placeholder="Selecione uma pessoa"
               options={people.map((person) => ({ value: person.id, label: person.nome }))}
             />
@@ -326,7 +326,7 @@ export function AllocationsOverview() {
             ) : (
               <Select
                 value={draft.squadId}
-                onChange={(e) => setDraft({ ...draft, squadId: e.target.value })}
+                onChange={(value) => setDraft({ ...draft, squadId: value })}
                 placeholder="Selecione uma squad"
                 disabled={!selectedPerson}
                 options={availableSquads.map((squad) => ({ value: squad.id, label: squad.name }))}
@@ -338,7 +338,7 @@ export function AllocationsOverview() {
             <label className="text-xs text-[var(--text)]">Sprint</label>
             <Select
               value={draft.sprintId}
-              onChange={(e) => setDraft({ ...draft, sprintId: e.target.value })}
+              onChange={(value) => setDraft({ ...draft, sprintId: value })}
               placeholder="Selecione uma sprint"
               options={sprints.map((sprint) => ({ value: sprint.id, label: formatSprintLabel(sprint) }))}
             />
@@ -392,7 +392,7 @@ export function AllocationsOverview() {
           <label className="text-xs text-[var(--text)]">Nova squad</label>
           <Select
             value={moveSquadId ?? ''}
-            onChange={(e) => setMoveSquadId(e.target.value)}
+            onChange={(value) => setMoveSquadId(value)}
             placeholder="Selecione uma squad"
             options={squads
               .filter((squad) => squad.id !== activeGroup.squadId)

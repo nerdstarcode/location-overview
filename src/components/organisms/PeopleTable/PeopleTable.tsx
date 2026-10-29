@@ -145,8 +145,8 @@ export function PeopleTable() {
               ) : (
                 <Select
                   value={draft.cargo}
-                  onChange={(e) => {
-                    const cargoName = e.target.value
+                  onChange={(value) => {
+                    const cargoName = value
                     const cargo = cargoByName.get(cargoName)
                     setDraft({ ...draft, cargo: cargoName, nivel: cargo?.nivel ?? draft.nivel })
                   }}

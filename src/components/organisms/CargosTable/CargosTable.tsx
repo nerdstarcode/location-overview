@@ -126,8 +126,9 @@ export function CargosTable() {
             <div className="flex flex-col gap-1">
               <label className="text-xs text-[var(--text)]">Tipo</label>
               <Select
+                disableClearable
                 value={draft.tipo}
-                onChange={(e) => setDraft({ ...draft, tipo: e.target.value as CargoConfig['tipo'] })}
+                onChange={(value) => setDraft({ ...draft, tipo: value as CargoConfig['tipo'] })}
                 options={CARGO_TIPOS.map((tipo) => ({ value: tipo, label: tipo }))}
               />
             </div>
@@ -136,7 +137,7 @@ export function CargosTable() {
               <label className="text-xs text-[var(--text)]">Senioridade</label>
               <Select
                 value={draft.nivel}
-                onChange={(e) => setDraft({ ...draft, nivel: e.target.value })}
+                onChange={(value) => setDraft({ ...draft, nivel: value })}
                 placeholder="Selecione uma senioridade"
                 options={levels.map((level) => ({ value: level.nivel, label: `${level.nivel} — ${level.label}` }))}
               />

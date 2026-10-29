@@ -159,7 +159,7 @@ export function TestReportsTable() {
               <label className="text-xs text-[var(--text)]">Squad</label>
               <Select
                 value={draft.squadId}
-                onChange={(e) => setDraft({ ...draft, squadId: e.target.value })}
+                onChange={(value) => setDraft({ ...draft, squadId: value })}
                 placeholder="Selecione uma squad"
                 options={squads.map((squad) => ({ value: squad.id, label: squad.name }))}
               />
@@ -169,7 +169,7 @@ export function TestReportsTable() {
               <label className="text-xs text-[var(--text)]">Sprint</label>
               <Select
                 value={draft.sprintId}
-                onChange={(e) => setDraft({ ...draft, sprintId: e.target.value })}
+                onChange={(value) => setDraft({ ...draft, sprintId: value })}
                 placeholder="Selecione uma sprint"
                 options={sprints.map((sprint) => ({ value: sprint.id, label: formatSprintLabel(sprint) }))}
               />
