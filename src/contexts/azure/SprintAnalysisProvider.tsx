@@ -20,6 +20,8 @@ import {
   type SprintSyncResult,
   type SyncOutcome,
 } from '../../lib/azure/syncToBase'
+import { listTestResultsForRuns } from '../../lib/azure/api'
+import { summarizeResultsByPerson } from '../../lib/azure/mappers'
 import { loadCargos } from '../../lib/cargosStorage'
 import { loadLevels } from '../../lib/levelsStorage'
 import { loadPeople } from '../../lib/peopleStorage'
@@ -118,15 +120,24 @@ export function SprintAnalysisProvider({ children }: { children: ReactNode }) {
     setLocalBase(loadLocalBase())
   }
 
-  function saveToBase(): SyncOutcome<SprintSyncResult> {
+  async function saveToBase(): Promise<SyncOutcome<SprintSyncResult>> {
     if (!team || !iteration) return { ok: false, reason: 'Sprint não encontrada neste team.' }
     if (!members.data || !workItems.data) return { ok: false, reason: 'Aguarde o carregamento dos dados da sprint.' }
+    let testExecutions
+    try {
+      testExecutions = testRuns.data
+        ? summarizeResultsByPerson(await listTestResultsForRuns(config, projectId, testRuns.data))
+        : undefined
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : String(error) }
+    }
     const result = syncSprintToBase({
       teamName: team.name,
       members: members.data,
       iteration,
       workItems: workItems.data,
       testRuns: metrics.testRuns,
+      testExecutions,
     })
     setLocalBase(loadLocalBase())
     return { ok: true, result }

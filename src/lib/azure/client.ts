@@ -38,6 +38,8 @@ export interface AzureFetchOptions {
   /** Query string adicional; api-version é incluída automaticamente. */
   query?: Record<string, string | number | undefined>
   signal?: AbortSignal
+  /** Padrão 7.1; alguns recursos (ex.: comentários de work item) só existem em versões preview. */
+  apiVersion?: string
 }
 
 interface AzureResponse<T> {
@@ -45,12 +47,12 @@ interface AzureResponse<T> {
   continuationToken: string | null
 }
 
-function buildUrl(config: AzureConfig, path: string, query: AzureFetchOptions['query']): string {
+function buildUrl(config: AzureConfig, path: string, query: AzureFetchOptions['query'], apiVersion = API_VERSION): string {
   const url = new URL(`https://dev.azure.com/${encodeURIComponent(config.organization.trim())}/${path.replace(/^\//, '')}`)
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== undefined && value !== '') url.searchParams.set(key, String(value))
   }
-  url.searchParams.set('api-version', API_VERSION)
+  url.searchParams.set('api-version', apiVersion)
   return url.toString()
 }
 
@@ -79,7 +81,7 @@ function assertJsonResponse(response: Response): void {
 async function send(config: AzureConfig, path: string, options: AzureFetchOptions): Promise<Response> {
   const hasBody = options.body !== undefined
   try {
-    return await fetch(buildUrl(config, path, options.query), {
+    return await fetch(buildUrl(config, path, options.query, options.apiVersion), {
       method: options.method ?? 'GET',
       headers: buildHeaders(config, hasBody),
       body: hasBody ? JSON.stringify(options.body) : undefined,

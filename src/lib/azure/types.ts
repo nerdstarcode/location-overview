@@ -70,3 +70,34 @@ export interface AzureTestRun {
   unanalyzedTests: number
   iteration?: string
 }
+
+export interface AzureTestResult {
+  id: number
+  outcome?: string
+  /** Quem executou; costuma faltar nos runs automatizados. */
+  runBy?: AzureIdentity
+  owner?: AzureIdentity
+  testCase?: { id: string; name?: string }
+  completedDate?: string
+}
+
+export interface AzureFieldChange {
+  oldValue?: unknown
+  newValue?: unknown
+}
+
+/** Uma revisão do work item (`_apis/wit/workItems/{id}/updates`): só os campos que mudaram. */
+export interface AzureWorkItemUpdate {
+  id: number
+  rev: number
+  revisedBy?: AzureIdentity
+  revisedDate?: string
+  fields?: Record<string, AzureFieldChange>
+}
+
+export interface AzureWorkItemComment {
+  id: number
+  text: string
+  createdBy?: AzureIdentity
+  createdDate?: string
+}

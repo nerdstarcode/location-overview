@@ -73,7 +73,7 @@ describe('syncSprintToBase', () => {
       workItems: FIXTURE_WORK_ITEMS,
       testRuns: FIXTURE_TEST_RUNS_SUMMARY,
     })
-    expect(result).toEqual({ squadCreated: true, peopleCreated: 3, peopleLinked: 0, sprintCreated: true, workItems: 13, testReport: true })
+    expect(result).toEqual({ squadCreated: true, peopleCreated: 3, peopleLinked: 0, sprintCreated: true, workItems: 13, testReport: true, testExecutions: 0 })
     expect(loadWorkItems()).toHaveLength(13)
     expect(loadSprints()[0].totalValidDays).toBe(10)
   })

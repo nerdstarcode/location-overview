@@ -4,14 +4,23 @@ import { loadPeople, savePeople, type Person } from '../peopleStorage'
 import { DEFAULT_TOTAL_VALID_DAYS, loadSprints, upsertSprint, type Sprint } from '../sprintsStorage'
 import { loadSquads, upsertSquad, type Squad } from '../squadsStorage'
 import { squadMatchesName } from '../squadMatching'
+import { replaceTestExecutions } from '../testExecutionsStorage'
 import { DEFAULT_TEST_POINTS_RATIO, loadTestReports, upsertTestReport } from '../testReportsStorage'
 import { normalizeKey } from '../text'
 import type { WorkItemRow } from '../workItems'
 import { loadWorkItems, mergeWorkItems, saveWorkItems } from '../workItemsStorage'
-import { getIterationWorkItems, listTestRuns } from './api'
+import { getIterationWorkItems, listTestResultsForRuns, listTestRuns } from './api'
 import type { AzureConfig } from './azureConfigStorage'
 import { isAbortError } from './client'
-import { azureWorkItemToRow, iterationSprintInfo, summarizeTestRuns, testRunsToReportFields, type TestRunsSummary } from './mappers'
+import {
+  azureWorkItemToRow,
+  iterationSprintInfo,
+  summarizeResultsByPerson,
+  summarizeTestRuns,
+  testRunsToReportFields,
+  type PersonTestSummary,
+  type TestRunsSummary,
+} from './mappers'
 import type { AzureIteration, AzureTeamMember } from './types'
 
 /** Resultado de uma sincronização: o que foi gravado, ou por que nada foi gravado. */
@@ -133,6 +142,8 @@ export interface SprintSyncInput {
   iteration: AzureIteration
   workItems: WorkItemRow[]
   testRuns: TestRunsSummary | null
+  /** Testes executados por pessoa; undefined quando os test results não foram buscados. */
+  testExecutions?: PersonTestSummary[]
 }
 
 export interface SprintSyncResult {
@@ -143,12 +154,20 @@ export interface SprintSyncResult {
   sprintCreated: boolean | null
   workItems: number
   testReport: boolean
+  /** Pessoas com testes executados gravadas para a sprint. */
+  testExecutions: number
 }
 
 function syncTestReport(squadId: string, sprint: Sprint | undefined, testRuns: TestRunsSummary | null): boolean {
   if (!sprint || !testRuns || testRuns.runCount === 0) return false
   upsertTestReportFromRuns(squadId, sprint.id, testRuns)
   return true
+}
+
+function syncTestExecutions(squadId: string, sprint: Sprint | undefined, executions: PersonTestSummary[] | undefined): number {
+  if (!sprint || !executions) return 0
+  replaceTestExecutions(squadId, sprint.id, executions)
+  return executions.length
 }
 
 export function syncSprintToBase(input: SprintSyncInput): SprintSyncResult {
@@ -162,6 +181,7 @@ export function syncSprintToBase(input: SprintSyncInput): SprintSyncResult {
     sprintCreated: sprintResult ? sprintResult.created : null,
     workItems: upsertWorkItems(input.workItems),
     testReport: syncTestReport(squad.id, sprintResult?.sprint, input.testRuns),
+    testExecutions: syncTestExecutions(squad.id, sprintResult?.sprint, input.testExecutions),
   }
 }
 
@@ -183,15 +203,18 @@ export interface IterationsSyncInput {
   onProgress?: (progress: IterationSyncProgress) => void
 }
 
-async function fetchIterationTestRuns(
+/** Resumo dos runs da sprint e os testes executados por pessoa (um pedido de results por run). */
+async function fetchIterationTests(
   config: AzureConfig,
   project: string,
   iteration: AzureIteration,
   signal?: AbortSignal,
-): Promise<TestRunsSummary | null> {
+): Promise<{ testRuns: TestRunsSummary | null; testExecutions?: PersonTestSummary[] }> {
   const { startDate, finishDate } = iteration.attributes
-  if (!startDate || !finishDate) return null
-  return summarizeTestRuns(await listTestRuns(config, project, startDate, finishDate, signal))
+  if (!startDate || !finishDate) return { testRuns: null }
+  const runs = await listTestRuns(config, project, startDate, finishDate, signal)
+  const results = await listTestResultsForRuns(config, project, runs, signal)
+  return { testRuns: summarizeTestRuns(runs), testExecutions: summarizeResultsByPerson(results) }
 }
 
 /**
@@ -213,13 +236,13 @@ export async function syncIterationsToBase(input: IterationsSyncInput): Promise<
     update(iteration.id, { status: 'running' })
     try {
       const items = await getIterationWorkItems(config, project, iteration.path, signal)
-      const testRuns = await fetchIterationTestRuns(config, project, iteration, signal)
+      const tests = await fetchIterationTests(config, project, iteration, signal)
       const result = syncSprintToBase({
         teamName: input.teamName,
         members: input.members,
         iteration,
         workItems: items.map((item) => azureWorkItemToRow(item, config)),
-        testRuns,
+        ...tests,
       })
       update(iteration.id, { status: 'done', result })
     } catch (error) {

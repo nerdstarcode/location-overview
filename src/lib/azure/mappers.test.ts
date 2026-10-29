@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_AZURE_CONFIG } from './azureConfigStorage'
-import { azureWorkItemToRow, iterationSprintInfo, summarizeTestRuns, testRunsToReportFields } from './mappers'
+import {
+  azureWorkItemToRow,
+  iterationSprintInfo,
+  summarizeResultsByPerson,
+  summarizeTestRuns,
+  testRunsToReportFields,
+  workItemTimeline,
+} from './mappers'
 import { FIXTURE_ITERATION, FIXTURE_TEST_RUNS } from './sprintFixtures'
 import type { AzureWorkItem } from './types'
 
@@ -96,5 +103,65 @@ describe('test runs', () => {
       failedPercent: 3.3,
       notRunCount: 2,
     })
+  })
+})
+
+describe('summarizeResultsByPerson', () => {
+  const ada = { id: '1', displayName: 'Ada', uniqueName: 'ada@example.com' }
+  const alan = { id: '2', displayName: 'Alan', uniqueName: 'alan@example.com' }
+
+  it('conta por quem executou, cai no owner e ignora não executados', () => {
+    const summary = summarizeResultsByPerson([
+      { id: 1, outcome: 'Passed', runBy: ada },
+      { id: 2, outcome: 'Failed', runBy: ada },
+      { id: 3, outcome: 'Blocked', runBy: ada },
+      { id: 4, outcome: 'NotExecuted', runBy: ada },
+      { id: 5, outcome: 'Passed', owner: alan },
+      { id: 6, outcome: 'Passed' },
+    ])
+    expect(summary).toEqual([
+      { email: 'ada@example.com', name: 'Ada', executed: 3, passed: 1, failed: 1, other: 1 },
+      { email: 'alan@example.com', name: 'Alan', executed: 1, passed: 1, failed: 0, other: 0 },
+    ])
+  })
+})
+
+describe('workItemTimeline', () => {
+  it('junta mudanças de estado, sprint, responsável, pontos e comentários em ordem', () => {
+    const events = workItemTimeline(
+      [
+        {
+          id: 1,
+          rev: 1,
+          revisedBy: { id: '1', displayName: 'Ada', uniqueName: 'ada@example.com' },
+          fields: {
+            'System.ChangedDate': { newValue: '2025-09-01T10:00:00Z' },
+            'System.State': { newValue: 'New' },
+            'System.Title': { newValue: 'Login' },
+          },
+        },
+        {
+          id: 2,
+          rev: 2,
+          revisedBy: { id: '1', displayName: 'Ada', uniqueName: 'ada@example.com' },
+          revisedDate: '9999-01-01T00:00:00Z',
+          fields: {
+            'System.ChangedDate': { oldValue: '2025-09-01T10:00:00Z', newValue: '2025-09-15T09:00:00Z' },
+            'System.IterationPath': { oldValue: 'Portal\\Sprint 08', newValue: 'Portal\\Sprint 09' },
+            'System.AssignedTo': { newValue: { displayName: 'Alan' } },
+            'Microsoft.VSTS.Scheduling.StoryPoints': { oldValue: 3, newValue: 5 },
+          },
+        },
+      ],
+      [{ id: 9, text: '<p>Bloqueado pela API&nbsp;de &amp; login</p>', createdDate: '2025-09-10T00:00:00Z', createdBy: { id: '2', displayName: 'Alan', uniqueName: 'alan@example.com' } }],
+      'Microsoft.VSTS.Scheduling.StoryPoints',
+    )
+    expect(events.map((e) => [e.kind, e.from ?? e.text, e.to])).toEqual([
+      ['state', '', 'New'],
+      ['comment', 'Bloqueado pela API de & login', undefined],
+      ['iteration', 'Portal\\Sprint 08', 'Portal\\Sprint 09'],
+      ['assignee', '', 'Alan'],
+      ['points', '3', '5'],
+    ])
   })
 })

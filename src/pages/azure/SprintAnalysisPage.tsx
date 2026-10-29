@@ -32,6 +32,7 @@ function describeSync(outcome: SyncOutcome<SprintSyncResult>): string {
       ? 'sprint não gravada (nome fora do padrão "Sprint N - FYxx-yy")'
       : `sprint ${result.sprintCreated ? 'criada' : 'atualizada'}`,
     result.testReport ? 'relatório de testes atualizado' : 'sem test runs para o relatório',
+    `${result.testExecutions} pessoa(s) com testes executados`,
   ]
   return `Base atualizada: ${parts.join(' · ')}.`
 }
@@ -104,7 +105,7 @@ function SprintAnalysisContent() {
         loading={loading}
         canSave={Boolean(workItems.data && members.data)}
         onRefresh={refresh}
-        onSave={() => setSyncMessage(describeSync(saveToBase()))}
+        onSave={async () => setSyncMessage(describeSync(await saveToBase()))}
       />
       {syncMessage && (
         <p role="status" className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-sm text-[var(--text-h)]">

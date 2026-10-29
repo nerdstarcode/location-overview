@@ -7,9 +7,12 @@ import type {
   AzureTeam,
   AzureTeamDaysOff,
   AzureTeamMember,
+  AzureTestResult,
   AzureTestRun,
   AzureWiqlResult,
   AzureWorkItem,
+  AzureWorkItemComment,
+  AzureWorkItemUpdate,
 } from './types'
 
 const seg = encodeURIComponent
@@ -172,4 +175,57 @@ export async function listTestRuns(
   return [...byId.values()]
     .filter((run) => startedWithin(run, start, end))
     .sort((a, b) => (a.startedDate ?? '').localeCompare(b.startedDate ?? ''))
+}
+
+const TEST_RESULTS_PAGE_SIZE = 1000
+
+/** Resultados (um por test case) de um run, paginados por $top/$skip. */
+export async function listTestRunResults(
+  config: AzureConfig,
+  project: string,
+  runId: number,
+  signal?: AbortSignal,
+): Promise<AzureTestResult[]> {
+  const results: AzureTestResult[] = []
+  for (let skip = 0; ; skip += TEST_RESULTS_PAGE_SIZE) {
+    const { value } = await azureFetch<{ value: AzureTestResult[] }>(config, `${seg(project)}/_apis/test/Runs/${runId}/results`, {
+      query: { $top: TEST_RESULTS_PAGE_SIZE, $skip: skip },
+      signal,
+    })
+    results.push(...value)
+    if (value.length < TEST_RESULTS_PAGE_SIZE) return results
+  }
+}
+
+/** Resultados de todos os runs, um run por vez. */
+export async function listTestResultsForRuns(
+  config: AzureConfig,
+  project: string,
+  runs: AzureTestRun[],
+  signal?: AbortSignal,
+): Promise<AzureTestResult[]> {
+  const results: AzureTestResult[] = []
+  for (const run of runs) results.push(...(await listTestRunResults(config, project, run.id, signal)))
+  return results
+}
+
+export async function getWorkItemUpdates(config: AzureConfig, id: number, signal?: AbortSignal): Promise<AzureWorkItemUpdate[]> {
+  const { value } = await azureFetch<{ value: AzureWorkItemUpdate[] }>(config, `_apis/wit/workItems/${id}/updates`, { signal })
+  return value
+}
+
+const COMMENTS_API_VERSION = '7.1-preview.4'
+
+export async function getWorkItemComments(
+  config: AzureConfig,
+  project: string,
+  id: number,
+  signal?: AbortSignal,
+): Promise<AzureWorkItemComment[]> {
+  const { comments } = await azureFetch<{ comments: AzureWorkItemComment[] }>(
+    config,
+    `${seg(project)}/_apis/wit/workItems/${id}/comments`,
+    { apiVersion: COMMENTS_API_VERSION, signal },
+  )
+  return comments
 }

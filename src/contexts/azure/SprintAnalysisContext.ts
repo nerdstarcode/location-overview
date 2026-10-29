@@ -23,7 +23,8 @@ export interface SprintAnalysisContextValue {
   /** Refaz todas as requisições da sprint e relê a base local. */
   refresh: () => void
   /** Grava squad, pessoas, sprint, work items e relatório de testes na base local. */
-  saveToBase: () => SyncOutcome<SprintSyncResult>
+  /** Grava a sprint na base; busca antes no Azure os test results por pessoa dos runs carregados. */
+  saveToBase: () => Promise<SyncOutcome<SprintSyncResult>>
   /** Grava os dias válidos (base de capacity) da sprint local, criando-a a partir da iteration se preciso. */
   updateSprintDays: (days: number) => SyncOutcome<Sprint>
   /** Work items ocultos: apagados na tabela e fora dos KPIs/gráficos (salvo no navegador). */

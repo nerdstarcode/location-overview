@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadTestReports } from '../testReportsStorage'
 import { loadWorkItems } from '../workItemsStorage'
-import { getIterationWorkItems, listTestRuns } from './api'
+import { loadTestExecutions } from '../testExecutionsStorage'
+import { getIterationWorkItems, listTestResultsForRuns, listTestRuns } from './api'
 import { DEFAULT_AZURE_CONFIG } from './azureConfigStorage'
 import { FIXTURE_ITERATIONS, FIXTURE_MEMBERS, FIXTURE_TEST_RUNS } from './sprintFixtures'
 import { syncIterationsToBase, type IterationSyncProgress } from './syncToBase'
 
-vi.mock('./api', () => ({ getIterationWorkItems: vi.fn(), listTestRuns: vi.fn() }))
+vi.mock('./api', () => ({ getIterationWorkItems: vi.fn(), listTestRuns: vi.fn(), listTestResultsForRuns: vi.fn() }))
 
 const config = { ...DEFAULT_AZURE_CONFIG, organization: 'org', pat: 'pat' }
 const [first, second] = FIXTURE_ITERATIONS
@@ -19,6 +20,9 @@ describe('syncIterationsToBase', () => {
   beforeEach(() => {
     vi.mocked(getIterationWorkItems).mockReset()
     vi.mocked(listTestRuns).mockReset().mockResolvedValue(FIXTURE_TEST_RUNS)
+    vi.mocked(listTestResultsForRuns)
+      .mockReset()
+      .mockResolvedValue([{ id: 1, outcome: 'Passed', runBy: { id: 'g', displayName: 'Grace', uniqueName: 'grace@example.com' } }])
   })
 
   it('busca e grava cada sprint em sequência', async () => {
@@ -41,6 +45,12 @@ describe('syncIterationsToBase', () => {
     expect(steps[1][first.id]).toEqual({ status: 'running' })
     expect(loadWorkItems()).toHaveLength(3)
     expect(loadTestReports().length).toBeGreaterThan(0)
+    expect(progress[first.id]).toMatchObject({ result: { testExecutions: 1 } })
+    // Uma linha por sprint sincronizada.
+    expect(loadTestExecutions()).toEqual([
+      expect.objectContaining({ email: 'grace@example.com', executed: 1, passed: 1 }),
+      expect.objectContaining({ email: 'grace@example.com', executed: 1, passed: 1 }),
+    ])
   })
 
   it('segue para a próxima sprint quando uma falha', async () => {

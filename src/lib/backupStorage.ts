@@ -13,6 +13,7 @@ import type { Sprint } from './sprintsStorage'
 import { loadPersonAllocations, savePersonAllocations } from './personAllocationsStorage'
 import type { PersonAllocation } from './personAllocationsStorage'
 import { loadHiddenWorkItems, saveHiddenWorkItems } from './hiddenWorkItemsStorage'
+import { loadTestExecutions, saveTestExecutions, type TestExecution } from './testExecutionsStorage'
 
 export interface AppBackup {
   exportedAt: string
@@ -25,6 +26,8 @@ export interface AppBackup {
   personAllocations: PersonAllocation[]
   /** Opcional: backups anteriores à funcionalidade de ocultar work items não têm. */
   hiddenWorkItems?: number[]
+  /** Opcional: backups anteriores ao Dashboard por Pessoa não têm. */
+  testExecutions?: TestExecution[]
 }
 
 /** Reúne todos os dados persistidos em localStorage (todas as telas) num único objeto exportável. */
@@ -39,6 +42,7 @@ export function exportAllData(): AppBackup {
     sprints: loadSprints(),
     personAllocations: loadPersonAllocations(),
     hiddenWorkItems: loadHiddenWorkItems(),
+    testExecutions: loadTestExecutions(),
   }
 }
 
@@ -58,4 +62,5 @@ export function importAllData(data: unknown): void {
   if (Array.isArray(backup.sprints)) saveSprints(backup.sprints)
   if (Array.isArray(backup.personAllocations)) savePersonAllocations(backup.personAllocations)
   if (Array.isArray(backup.hiddenWorkItems)) saveHiddenWorkItems(backup.hiddenWorkItems)
+  if (Array.isArray(backup.testExecutions)) saveTestExecutions(backup.testExecutions)
 }
