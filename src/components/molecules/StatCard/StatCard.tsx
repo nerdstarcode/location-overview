@@ -1,4 +1,5 @@
-import { AlertTriangle } from 'lucide-react'
+import { useId } from 'react'
+import { AlertTriangle, Info } from 'lucide-react'
 
 export interface StatCardProps {
   label: string
@@ -6,12 +7,40 @@ export interface StatCardProps {
   hint?: string
   /** Quando informado, mostra um ícone de alerta ao lado do valor, com esta mensagem como descrição. */
   alert?: string
+  /** Explicação de como o valor é calculado: tooltip no ícone ⓘ ao lado do label. */
+  info?: string
 }
 
-export function StatCard({ label, value, hint, alert }: StatCardProps) {
+function InfoTooltip({ label, text }: { label: string; text: string }) {
+  const tooltipId = useId()
+  return (
+    <span className="group relative inline-flex">
+      <button
+        type="button"
+        aria-label={`Como funciona: ${label}`}
+        aria-describedby={tooltipId}
+        className="rounded-full text-[var(--text)] transition-colors hover:text-[var(--text-h)] focus-visible:text-[var(--text-h)] focus-visible:outline-none"
+      >
+        <Info size={13} />
+      </button>
+      <span
+        role="tooltip"
+        id={tooltipId}
+        className="pointer-events-none invisible absolute bottom-full left-0 z-20 mb-1 w-64 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] p-2 text-xs font-normal leading-snug text-[var(--text-h)] opacity-0 shadow-lg transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
+      >
+        {text}
+      </span>
+    </span>
+  )
+}
+
+export function StatCard({ label, value, hint, alert, info }: StatCardProps) {
   return (
     <div className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3">
-      <p className="text-xs font-medium text-[var(--text)]">{label}</p>
+      <p className="flex items-center gap-1 text-xs font-medium text-[var(--text)]">
+        {label}
+        {info && <InfoTooltip label={label} text={info} />}
+      </p>
       <p className="mt-1 flex items-center gap-2 text-2xl font-semibold tabular-nums text-[var(--text-h)]">
         {value}
         {alert && (

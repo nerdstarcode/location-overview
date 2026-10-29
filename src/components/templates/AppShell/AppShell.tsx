@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { ChartColumn, ClipboardList, Cloud, Layers, LayoutDashboard, Menu, SlidersHorizontal, Users } from 'lucide-react'
+import { ChartColumn, ClipboardList, Cloud, Layers, LayoutDashboard, Menu, SlidersHorizontal, UserRound, Users } from 'lucide-react'
 import { Sidebar } from '../../organisms/Sidebar/Sidebar'
 import { NavItem } from '../../molecules/NavItem/NavItem'
 import { ThemeToggle } from '../../atoms/ThemeToggle/ThemeToggle'
@@ -36,7 +36,8 @@ export function AppShell() {
       <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)}>
         <NavItem to="/" label="Alocação" icon={LayoutDashboard} exact />
         <NavItem to="/work-items" label="Work Items" icon={ClipboardList} />
-        <NavItem to="/dashboard" label="Dashboard" icon={ChartColumn} />
+        <NavItem to="/dashboard/squad" label="Dashboard Squad" icon={ChartColumn} />
+        <NavItem to="/dashboard/pessoa" label="Dashboard Pessoa" icon={UserRound} />
         <NavItem to="/pessoas" label="Pessoas" icon={Users} />
         <NavItem to="/squads" label="Squads" icon={Layers} />
         <NavItem to="/niveis" label="Níveis" icon={SlidersHorizontal} />

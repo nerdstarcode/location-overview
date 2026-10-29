@@ -7,11 +7,13 @@ export interface ModalProps {
   title: string
   children: ReactNode
   footer?: ReactNode
+  /** lg para conteúdo largo (tabelas, linha do tempo). */
+  size?: 'md' | 'lg'
 }
 
 // Modal simples: overlay + painel centralizado, fecha em clique no backdrop
 // ou Esc (mesmo padrão de outside-click já usado em MultiSelectFilter).
-export function Modal({ open, onClose, title, children, footer }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, size = 'md' }: ModalProps) {
   useEffect(() => {
     if (!open) return
     function handleKeyDown(event: KeyboardEvent) {
@@ -30,7 +32,7 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
       role="presentation"
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] shadow-lg"
+        className={`flex max-h-[90vh] w-full ${size === 'lg' ? 'max-w-3xl' : 'max-w-lg'} flex-col rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] shadow-lg`}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"

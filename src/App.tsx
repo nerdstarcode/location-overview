@@ -1,13 +1,14 @@
 import './App.css'
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/templates/AppShell/AppShell'
 import { AzureConfigProvider } from './contexts/azure/AzureConfigProvider'
 import { AllocationPage } from './pages/AllocationPage'
-import { DashboardPage } from './pages/DashboardPage'
 import { LevelsPage } from './pages/LevelsPage'
 import { PeoplePage } from './pages/PeoplePage'
 import { SquadsPage } from './pages/SquadsPage'
 import { WorkItemsPage } from './pages/WorkItemsPage'
+import { PersonDashboardPage } from './pages/dashboard/PersonDashboardPage'
+import { SquadDashboardPage } from './pages/dashboard/SquadDashboardPage'
 import { AzureSettingsPage } from './pages/azure/AzureSettingsPage'
 import { RequireAzureConfig } from './pages/azure/RequireAzureConfig'
 import { AzureProjectsPage } from './pages/azure/AzureProjectsPage'
@@ -23,7 +24,11 @@ function App() {
           <Route index element={<AllocationPage />} />
           <Route path="niveis" element={<LevelsPage />} />
           <Route path="work-items" element={<WorkItemsPage />} />
-          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="dashboard">
+            <Route index element={<Navigate to="squad" replace />} />
+            <Route path="squad" element={<SquadDashboardPage />} />
+            <Route path="pessoa/:personId?" element={<PersonDashboardPage />} />
+          </Route>
           <Route path="pessoas" element={<PeoplePage />} />
           <Route path="squads" element={<SquadsPage />} />
           <Route path="azure">

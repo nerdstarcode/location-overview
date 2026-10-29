@@ -38,6 +38,8 @@ export interface WorkItemsDashboardProps {
    * desmonta a instância anterior de WorkItemsDashboard).
    */
   storageKey?: string
+  /** Fixa o filtro de Squad (Dashboard por Squad); o MultiSelect de Squad deixa de aparecer. */
+  squadName?: string
 }
 
 
@@ -240,14 +242,19 @@ export function WorkItemsDashboard({
   emptyMessage,
   cargoTipo,
   storageKey,
+  squadName,
 }: WorkItemsDashboardProps) {
   const [rows] = useState<WorkItemRow[]>(() => {
     const base = initialRows ?? loadWorkItems()
     return allowedTypes ? base.filter((row) => allowedTypes.includes(row.workItemType)) : base
   })
-  const [filters, setFilters] = usePersistedState<Record<string, string[]>>(
+  const [storedFilters, setFilters] = usePersistedState<Record<string, string[]>>(
     `work-items-dashboard-filters:${storageKey ?? 'default'}`,
     {},
+  )
+  const filters = useMemo(
+    () => (squadName ? { ...storedFilters, squad: [squadName] } : storedFilters),
+    [storedFilters, squadName],
   )
   const [personAllocations] = useState<PersonAllocation[]>(loadPersonAllocations)
   const [sprintsCatalog] = useState<Sprint[]>(loadSprints)
@@ -305,6 +312,7 @@ export function WorkItemsDashboard({
   )
 
   const filterFields = useMemo(() => buildFilterFields(squads), [squads])
+  const visibleFilterFields = squadName ? filterFields.filter(({ field }) => field !== 'squad') : filterFields
 
   const filterOptions = useMemo(() => {
     const options: Record<string, string[]> = {}
@@ -545,7 +553,7 @@ export function WorkItemsDashboard({
   return (
     <div className="flex w-full flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        {filterFields.map(({ field, label }) => (
+        {visibleFilterFields.map(({ field, label }) => (
           <MultiSelectFilter
             key={field}
             label={label}

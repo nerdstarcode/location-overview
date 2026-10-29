@@ -79,8 +79,9 @@ export function splitTags(tags: string): string[] {
 /**
  * Alguns work items têm a tag "Delayed" junto de uma tag com o padrão de sprint
  * ("Sprint 1 - FY25-26") diferente do sprint indicado pelo Iteration Path — o
- * item foi fechado depois, dentro de outro sprint. Nesse caso o Sprint/Fiscal
- * Year da linha passam a refletir o valor da tag, e a linha é marcada como delayed.
+ * item foi planejado na sprint da tag e movido (entregue) para a do Iteration
+ * Path. Nesse caso o Sprint/Fiscal Year da linha passam a refletir o valor da
+ * tag (a sprint planejada), e a linha é marcada como delayed.
  */
 export function resolveSprint(
   tags: string,
