@@ -18,9 +18,9 @@ const INFO = {
   average: 'Testes executados ÷ sprints em que a pessoa executou algum teste.',
   passed: 'Passed ÷ executados × 100. Abaixo, o % de failed (Failed, Error, Timeout e Aborted).',
   load:
-    'Compara os Pontos de Execução da pessoa com o previsto na Alocação, só nas sprints em que ela tem alocação. Previsto = dias válidos alocados × capacity points/dia do nível. Máximo = carga cheia (8h/dia, max points/dia) nos dias válidos. Extensão = +3 dias úteis acima do máximo (a 3ª semana, de planejamento, em que ainda se coda e testa). Conta o entregue e o que está em andamento (separados no painel). Dentro: até 10% em volta do previsto; Acima: até o máximo; Na extensão: passou do máximo, mas coube na gordurinha; Sobrecarga: passou até da extensão.',
-  executionPoints:
-    'Ponto de execução × runs ÷ 36 dos Test Cases atribuídos à pessoa (36 PE = 1 SP). A média ignora sprints sem PE.',
+    'Compara os Test Points executados pela pessoa (em SP) com o previsto na Alocação, só nas sprints em que ela tem alocação. Previsto = dias válidos alocados × capacity points/dia do nível. Máximo = carga cheia (8h/dia, max points/dia) nos dias válidos. Extensão = +3 dias úteis acima do máximo (a 3ª semana, de planejamento, em que ainda se coda e testa). Conta o entregue e o que está em andamento (separados no painel). Dentro: até 10% em volta do previsto; Acima: até o máximo; Na extensão: passou do máximo, mas coube na gordurinha; Sobrecarga: passou até da extensão.',
+  testPoints:
+    'Cada resultado de teste executado pela pessoa é um Test Point. Em SP: Test Points ÷ proporção Test Points : Story Point do relatório de teste da squad/sprint (3,5 quando não há relatório), a mesma conta do Overview Squads. A média ignora sprints sem execução.',
   testCases: 'Quantidade de Test Cases e Test Plans com a pessoa no Assigned To, nas sprints do filtro.',
 }
 
@@ -39,7 +39,7 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
         tooltip: { trigger: 'axis' },
         legend: { top: 0, textStyle: chart.textStyle },
         xAxis: chart.sprintAxis(sprints.map((s) => s.label)),
-        yAxis: [chart.valueAxis({ name: 'Testes', nameTextStyle: chart.textStyle }), chart.valueAxis({ name: 'PE (SP)', nameTextStyle: chart.textStyle, splitLine: { show: false } })],
+        yAxis: [chart.valueAxis({ name: 'Testes', nameTextStyle: chart.textStyle }), chart.valueAxis({ name: 'Test Points (SP)', nameTextStyle: chart.textStyle, splitLine: { show: false } })],
         series: [
           {
             name: 'Passed',
@@ -73,10 +73,10 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
             barMaxWidth: 40,
           },
           {
-            name: 'Pontos de Execução',
+            name: 'Test Points (SP)',
             type: 'line',
             yAxisIndex: 1,
-            data: sprints.map((s) => s.executionPoints),
+            data: sprints.map((s) => s.testPoints),
             itemStyle: { color: chart.palette[4] },
             symbol: 'circle',
           },
@@ -148,13 +148,6 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
       { id: 'title', header: 'Título', accessorFn: (item) => item.row.title },
       { id: 'state', header: 'Estado', accessorFn: (item) => item.row.state },
       { id: 'runs', header: 'Runs', accessorFn: (item) => item.row.runs, meta: { align: 'right', numeric: true } },
-      {
-        id: 'pe',
-        header: 'PE (SP)',
-        accessorFn: (item) => item.executionPoints,
-        cell: ({ row }) => round1(row.original.executionPoints),
-        meta: { align: 'right', numeric: true },
-      },
       { id: 'delivery', header: 'Sprint', accessorFn: (item) => item.delay.deliverySprint },
       {
         id: 'delay',
@@ -172,20 +165,25 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
 
   return (
     <div className="flex flex-col gap-4">
-      <CapacityLoadCard label="Entrega × previsto" info={INFO.load} unit="PE" load={metrics} />
+      <CapacityLoadCard label="Entrega × previsto" info={INFO.load} unit="SP" load={metrics} />
 
       {/* 5 cards: 1/2/3 colunas e uma linha só em telas largas. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard label="Testes executados" info={INFO.executed} value={metrics.executed} hint={executionsHint} />
         <StatCard label="Média de execução" info={INFO.average} value={`${metrics.averageExecutedPerSprint} testes/sprint`} hint="Sprints com execução" />
         <StatCard label="% Passed" info={INFO.passed} value={`${metrics.passedPercent}%`} hint={`${metrics.failedPercent}% failed`} />
-        <StatCard label="Pontos de Execução" info={INFO.executionPoints} value={`${metrics.executionPoints} SP`} hint={`Média ${metrics.averageExecutionPointsPerSprint} SP/sprint`} />
+        <StatCard
+          label="Test Points"
+          info={INFO.testPoints}
+          value={`${metrics.testPoints} SP`}
+          hint={`${metrics.executed} Test Points · média ${metrics.averageTestPointsPerSprint} SP/sprint`}
+        />
         <StatCard label="Test Cases atribuídos" info={INFO.testCases} value={metrics.testCases} hint="Test Case / Test Plan com a pessoa no Assigned To" />
       </div>
 
       <ChartCard
         title="Testes executados por sprint"
-        description="Barras: resultados executados pela pessoa (runBy). Linhas: Pontos de Execução dos Test Cases atribuídos e capacity da Alocação (eixo da direita, em SP)."
+        description="Barras: resultados executados pela pessoa (runBy). Linhas: Test Points executados (em SP) e capacity da Alocação (eixo da direita, em SP)."
         isEmpty={sprints.length === 0}
         emptyMessage="Nenhuma execução, Test Case ou alocação nas sprints selecionadas."
       >

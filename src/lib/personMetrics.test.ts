@@ -373,7 +373,7 @@ describe('computePersonQaMetrics', () => {
     row({ id: 51, workItemType: 'User Story', assignedTo: 'Grace Hopper <grace@example.com>', storyPoints: 5 }),
   ]
 
-  it('soma execuções da pessoa por sprint e os Pontos de Execução dos Test Cases', () => {
+  it('soma execuções da pessoa por sprint e converte os Test Points executados em SP', () => {
     const metrics = computePersonQaMetrics({ person: grace, rows, sprints: [s8, s9], allocations: [], levels, selectedSprints: [], executions })
     expect(metrics).toMatchObject({
       executed: 16,
@@ -381,10 +381,20 @@ describe('computePersonQaMetrics', () => {
       failed: 1,
       averageExecutedPerSprint: 8,
       passedPercent: 87.5,
-      executionPoints: 1,
+      // Sem relatório de teste: proporção padrão 3,5 (10 ÷ 3,5 = 2,9 e 6 ÷ 3,5 = 1,7).
+      testPoints: 4.6,
       testCases: 1,
       capacityAdherence: null,
       hasExecutions: true,
     })
+  })
+
+  it('usa a proporção Test Points : Story Point do relatório da squad/sprint', () => {
+    const testReports = [
+      { id: 'r1', squadId: 'sq1', sprintId: 's8', testPoints: 40, runsPercent: 100, passedPercent: 90, failedPercent: 10, notRunCount: 0, pointsRatio: 2 },
+    ]
+    const metrics = computePersonQaMetrics({ person: grace, rows, sprints: [s8, s9], allocations: [], levels, selectedSprints: [], executions, testReports })
+    expect(metrics.sprints.map((s) => s.testPoints)).toEqual([5, 1.7])
+    expect(metrics.testPoints).toBe(6.7)
   })
 })

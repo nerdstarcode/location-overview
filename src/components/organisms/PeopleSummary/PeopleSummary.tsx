@@ -28,7 +28,8 @@ const INFO = {
   executed: 'Soma dos testes executados (runBy no Azure) pelas pessoas listadas.',
   averageQa: 'Média, entre as pessoas que executaram testes, da média de testes por sprint de cada uma.',
   passed: 'Passed ÷ executados × 100 somando todas as pessoas.',
-  executionPoints: 'Soma dos Pontos de Execução (÷36) dos Test Cases atribuídos às pessoas listadas.',
+  testPoints:
+    'Soma dos Test Points executados pelas pessoas listadas, em SP (Test Points ÷ proporção do relatório de teste da squad/sprint; 3,5 sem relatório).',
 }
 
 function averageOfPositive(values: number[]): number {
@@ -234,7 +235,7 @@ export function PeopleSummary({ rows, view, mode, onModeChange, onOpenPerson }: 
         cell: ({ row }) => `${row.original.qa.failedPercent}%`,
         meta: { align: 'right', numeric: true },
       },
-      { id: 'pe', header: 'PE (SP)', accessorFn: (r) => r.qa.executionPoints, meta: { align: 'right', numeric: true } },
+      { id: 'testPoints', header: 'Test Points (SP)', accessorFn: (r) => r.qa.testPoints, meta: { align: 'right', numeric: true } },
       {
         id: 'adherence',
         header: 'Aderência',
@@ -244,7 +245,7 @@ export function PeopleSummary({ rows, view, mode, onModeChange, onOpenPerson }: 
       },
       {
         id: 'overload',
-        header: 'Acima do Max (PE)',
+        header: 'Acima do Max (SP)',
         accessorFn: (r) => r.qa.overloadPoints,
         cell: ({ row }) => (row.original.qa.overloadPoints > 0 ? row.original.qa.overloadPoints : '—'),
         meta: { align: 'right', numeric: true },
@@ -296,10 +297,10 @@ export function PeopleSummary({ rows, view, mode, onModeChange, onOpenPerson }: 
             info={INFO.passed}
           />
           <StatCard
-            label="Pontos de Execução"
-            value={`${sum((r) => r.qa.executionPoints)} SP`}
+            label="Test Points"
+            value={`${sum((r) => r.qa.testPoints)} SP`}
             hint={`Aderência do time: ${formatPercent(adherenceOf(visible.map((r) => r.qa)))}`}
-            info={INFO.executionPoints}
+            info={INFO.testPoints}
           />
         </div>
       )}

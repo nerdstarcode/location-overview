@@ -8,6 +8,7 @@ import { findSquadNameForIterationPath } from './squadMatching'
 import { formatSprintLabel, type Sprint } from './sprintsStorage'
 import type { Squad } from './squadsStorage'
 import type { TestExecution } from './testExecutionsStorage'
+import { DEFAULT_TEST_POINTS_RATIO, type TestReport } from './testReportsStorage'
 import { normalizeKey } from './text'
 import { CLOSED_STATES, parseSprintInfo, type WorkItemRow } from './workItems'
 
@@ -21,9 +22,6 @@ export const QA_ITEM_TYPES = ['Test Case', 'Test Plan']
 
 /** Itens cujo Iteration Path não casa com nenhuma squad cadastrada. */
 export const NO_SQUAD_LABEL = 'Sem squad'
-
-/** 36 pontos de execução equivalem a 1 story point (mesma regra do Dashboard por Squad). */
-const EXECUTION_POINTS_PER_STORY_POINT = 36
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
@@ -519,8 +517,11 @@ export interface PersonQaSprint {
   passed: number
   failed: number
   other: number
-  /** Pontos de Execução dos Test Cases atribuídos, já na escala de story points (÷36). */
-  executionPoints: number
+  /**
+   * Test Points executados pela pessoa já na escala de story points: cada resultado executado é
+   * um Test Point, dividido pela proporção do relatório de teste da squad/sprint (padrão 3,5).
+   */
+  testPoints: number
   capacity: number
   /** Carga cheia (max points/dia) nos dias válidos. */
   max: number
@@ -532,7 +533,6 @@ export interface PersonQaSprint {
 
 export interface PersonQaItem {
   row: WorkItemRow
-  executionPoints: number
   delay: DelayInfo
 }
 
@@ -547,17 +547,18 @@ export interface PersonQaMetrics {
   averageExecutedPerSprint: number
   passedPercent: number
   failedPercent: number
-  executionPoints: number
-  averageExecutionPointsPerSprint: number
+  /** Test Points executados convertidos em SP (o parâmetro da aderência). */
+  testPoints: number
+  averageTestPointsPerSprint: number
   testCases: number
   /** Capacity da Alocação somada nas sprints do filtro. */
   capacity: number
-  /** Pontos de Execução nas sprints com alocação, cada sprint limitada ao Max (o numerador da aderência). */
+  /** Test Points (SP) nas sprints com alocação, cada sprint limitada ao Max com extensão (o numerador da aderência). */
   deliveredOnAllocatedSprints: number
   allocatedSprints: number
-  /** Pontos de Execução (limitados ao Max) ÷ capacity nas sprints com alocação, em %; null sem alocação. */
+  /** Test Points (limitados ao Max com extensão) ÷ capacity nas sprints com alocação, em %; null sem alocação. */
   capacityAdherence: number | null
-  /** Pontos de Execução acima do Max nas sprints com alocação: sobrecarga ou acima do nível atual. */
+  /** Test Points acima do Max com extensão nas sprints com alocação: sobrecarga ou acima do nível atual. */
   overloadPoints: number
   overloadSprints: string[]
   /** Soma do Máximo (carga cheia nos dias válidos) nas sprints com alocação. */
@@ -569,7 +570,7 @@ export interface PersonQaMetrics {
   extensionUsedSprints: number
   /** Quantas sprints com alocação caíram em cada situação. */
   sprintStatusCounts: Record<LoadStatus, number>
-  /** Pontos de Execução reais (sem limite) nas sprints com alocação. */
+  /** Test Points reais (sem limite) nas sprints com alocação. */
   deliveredOnAllocatedSprintsRaw: number
   /** Situação da entrega nas sprints com alocação; null sem alocação. */
   loadStatus: LoadStatus | null
@@ -577,17 +578,24 @@ export interface PersonQaMetrics {
   hasExecutions: boolean
 }
 
-export function computePersonQaMetrics(input: PersonMetricsInput & { executions: TestExecution[] }): PersonQaMetrics {
+export interface PersonQaInput extends PersonMetricsInput {
+  executions: TestExecution[]
+  /** Relatórios de teste por squad/sprint: dão a proporção Test Points : Story Point. */
+  testReports?: TestReport[]
+}
+
+export function computePersonQaMetrics(input: PersonQaInput): PersonQaMetrics {
   const sprintsByLabel = new Map(input.sprints.map((s) => [formatSprintLabel(s), s]))
   const sprintsById = new Map(input.sprints.map((s) => [s.id, s]))
   const squadNamesById = new Map((input.squads ?? []).map((s) => [s.id, s.name]))
+  const ratioByReport = new Map((input.testReports ?? []).map((r) => [`${r.squadId}|${r.sprintId}`, r.pointsRatio]))
   const capacity = capacityBySprint(input)
   const inSprint = sprintFilter(input, capacity)
 
   const bySprint = new Map<string, PersonQaSprint>()
   const sprintEntry = (label: string) => {
     const entry =
-      bySprint.get(label) ?? { label, executed: 0, passed: 0, failed: 0, other: 0, executionPoints: 0, capacity: 0, max: 0, maxExtended: 0, bySquad: {} }
+      bySprint.get(label) ?? { label, executed: 0, passed: 0, failed: 0, other: 0, testPoints: 0, capacity: 0, max: 0, maxExtended: 0, bySquad: {} }
     bySprint.set(label, entry)
     return entry
   }
@@ -611,6 +619,9 @@ export function computePersonQaMetrics(input: PersonMetricsInput & { executions:
     entry.passed += execution.passed
     entry.failed += execution.failed
     entry.other += execution.other
+    // Mesma conversão do "Test Points" do Overview Squads: Test Points ÷ proporção do relatório.
+    const ratio = ratioByReport.get(`${execution.squadId}|${execution.sprintId}`) ?? 0
+    entry.testPoints += execution.executed / (ratio > 0 ? ratio : DEFAULT_TEST_POINTS_RATIO)
     const squad = squadNamesById.get(execution.squadId) ?? NO_SQUAD_LABEL
     entry.bySquad[squad] = (entry.bySquad[squad] ?? 0) + execution.executed
     executedBySquad.set(squad, (executedBySquad.get(squad) ?? 0) + execution.executed)
@@ -620,22 +631,14 @@ export function computePersonQaMetrics(input: PersonMetricsInput & { executions:
     .filter((row) => isType(row, QA_ITEM_TYPES) && isPersonItem(row, input.person))
     .filter((row) => inSprint(plannedSprintLabel(row)))
     .filter((row) => squadSelected(squadOfRow(input.squads ?? [], row), input.selectedSquads))
-    .map((row) => ({
-      row,
-      executionPoints: (row.pontoExecucao * row.runs) / EXECUTION_POINTS_PER_STORY_POINT,
-      delay: delayInfo(row, sprintsByLabel),
-    }))
-  for (const item of items) {
-    const label = plannedSprintLabel(item.row)
-    if (label) sprintEntry(label).executionPoints += item.executionPoints
-  }
+    .map((row) => ({ row, delay: delayInfo(row, sprintsByLabel) }))
 
   const sprints = [...bySprint.values()]
-    .map((s) => ({ ...s, executionPoints: round1(s.executionPoints), capacity: round1(s.capacity), max: round1(s.max), maxExtended: round1(s.maxExtended) }))
+    .map((s) => ({ ...s, testPoints: round1(s.testPoints), capacity: round1(s.capacity), max: round1(s.max), maxExtended: round1(s.maxExtended) }))
     .sort((a, b) => compareSprintLabels(a.label, b.label))
   const sum = (pick: (s: PersonQaSprint) => number) => sprints.reduce((total, s) => total + pick(s), 0)
   const executed = sum((s) => s.executed)
-  const executionPoints = sum((s) => s.executionPoints)
+  const testPoints = sum((s) => s.testPoints)
 
   return {
     sprints,
@@ -647,10 +650,10 @@ export function computePersonQaMetrics(input: PersonMetricsInput & { executions:
     averageExecutedPerSprint: averageOfActive(sprints.map((s) => s.executed)),
     passedPercent: percentOf(sum((s) => s.passed), executed),
     failedPercent: percentOf(sum((s) => s.failed), executed),
-    executionPoints: round1(executionPoints),
-    averageExecutionPointsPerSprint: averageOfActive(sprints.map((s) => s.executionPoints)),
+    testPoints: round1(testPoints),
+    averageTestPointsPerSprint: averageOfActive(sprints.map((s) => s.testPoints)),
     testCases: items.length,
-    ...allocationAdherence(sprints, (s) => s.executionPoints),
+    ...allocationAdherence(sprints, (s) => s.testPoints),
     hasExecutions: executions.length > 0,
   }
 }
@@ -696,6 +699,7 @@ export interface PeopleSummaryInput extends Omit<PersonMetricsInput, 'person'> {
   people: Person[]
   cargos: CargoConfig[]
   executions: TestExecution[]
+  testReports?: TestReport[]
   mode: DevAttribution
   pointTypes: string[]
 }

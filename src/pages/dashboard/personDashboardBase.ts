@@ -8,6 +8,7 @@ import { compareSprintLabels, fiscalYearOfLabel, plannedSprintLabel, type DevAtt
 import { formatSprintLabel, loadSprints } from '../../lib/sprintsStorage'
 import { loadSquads } from '../../lib/squadsStorage'
 import { loadTestExecutions } from '../../lib/testExecutionsStorage'
+import { loadTestReports } from '../../lib/testReportsStorage'
 import { loadWorkItems } from '../../lib/workItemsStorage'
 
 // Base e filtros comuns às Métricas Individuais e ao Resumo: os filtros
@@ -24,6 +25,7 @@ export function loadPersonDashboardBase() {
     levels: loadLevels(),
     cargos: loadCargos(),
     executions: loadTestExecutions(),
+    testReports: loadTestReports(),
     squads: loadSquads(),
   }
 }
