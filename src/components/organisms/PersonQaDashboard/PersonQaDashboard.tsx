@@ -17,7 +17,7 @@ const INFO = {
   average: 'Testes executados ÷ sprints em que a pessoa executou algum teste.',
   passed: 'Passed ÷ executados × 100. Abaixo, o % de failed (Failed, Error, Timeout e Aborted).',
   adherence:
-    'Pontos de Execução ÷ capacity × 100, só nas sprints em que a pessoa tem alocação. Capacity = dias alocados (% × dias válidos) × capacity points/dia do nível atual.',
+    'Pontos de Execução ÷ capacity × 100, só nas sprints em que a pessoa tem alocação. Em cada sprint, a entrega conta no máximo até o Max (carga cheia de 8h/dia, 40h/semana, no nível da pessoa); o excedente não aumenta a aderência e aparece como alerta de sobrecarga ou de entrega acima do nível atual. Capacity/Max = dias alocados (% × dias válidos) × points/dia do nível.',
   executionPoints:
     'Ponto de execução × runs ÷ 36 dos Test Cases atribuídos à pessoa (36 PE = 1 SP). A média ignora sprints sem PE.',
   testCases: 'Quantidade de Test Cases e Test Plans com a pessoa no Assigned To, nas sprints do filtro.',
@@ -37,7 +37,7 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
       chart.baseOption({
         tooltip: { trigger: 'axis' },
         legend: { top: 0, textStyle: chart.textStyle },
-        xAxis: chart.categoryAxis(sprints.map((s) => s.label)),
+        xAxis: chart.sprintAxis(sprints.map((s) => s.label)),
         yAxis: [chart.valueAxis({ name: 'Testes', nameTextStyle: chart.textStyle }), chart.valueAxis({ name: 'PE (SP)', nameTextStyle: chart.textStyle, splitLine: { show: false } })],
         series: [
           {
@@ -101,7 +101,7 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
       chart.baseOption({
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
         legend: { top: 0, type: 'scroll', textStyle: chart.textStyle },
-        xAxis: chart.categoryAxis(executedSprints.map((s) => s.label)),
+        xAxis: chart.sprintAxis(executedSprints.map((s) => s.label)),
         yAxis: chart.valueAxis({ minInterval: 1 }),
         series: metrics.squadNames.map((squad, index) => ({
           name: squad,
@@ -118,7 +118,7 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
     () =>
       chart.baseOption({
         tooltip: { trigger: 'axis', valueFormatter: (value) => `${value}%` },
-        xAxis: chart.categoryAxis(executedSprints.map((s) => s.label)),
+        xAxis: chart.sprintAxis(executedSprints.map((s) => s.label)),
         yAxis: chart.valueAxis({ min: 0, max: 100, axisLabel: { ...chart.textStyle, formatter: '{value}%' } }),
         series: [
           {
@@ -171,17 +171,23 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Testes executados" info={INFO.executed} value={metrics.executed} hint={executionsHint} />
         <StatCard label="Média de execução" info={INFO.average} value={`${metrics.averageExecutedPerSprint} testes/sprint`} hint="Sprints com execução" />
         <StatCard label="% Passed" info={INFO.passed} value={`${metrics.passedPercent}%`} hint={`${metrics.failedPercent}% failed`} />
         <StatCard
-          label="Aderência à capacity" info={INFO.adherence}
+          label="Aderência à capacity"
+          info={INFO.adherence}
           value={metrics.capacityAdherence === null ? '—' : `${metrics.capacityAdherence}%`}
           hint={
             metrics.allocatedSprints > 0
-              ? `${metrics.deliveredOnAllocatedSprints} PE em ${metrics.allocatedSprints} sprint(s) com alocação · capacity ${metrics.capacity} SP`
+              ? `${metrics.deliveredOnAllocatedSprints} de ${metrics.capacity} SP de capacity · ${metrics.allocatedSprints} sprint(s) com alocação`
               : 'Sem alocação nas sprints'
+          }
+          alert={
+            metrics.overloadSprints.length > 0
+              ? `${metrics.overloadPoints} PE acima do Max em ${metrics.overloadSprints.length} sprint(s) — sobrecarga ou acima do nível`
+              : undefined
           }
         />
         <StatCard label="Pontos de Execução" info={INFO.executionPoints} value={`${metrics.executionPoints} SP`} hint={`Média ${metrics.averageExecutionPointsPerSprint} SP/sprint`} />

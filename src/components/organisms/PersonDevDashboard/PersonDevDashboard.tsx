@@ -33,7 +33,7 @@ const INFO = {
   averageDelayed:
     'SP atrasados ÷ sprints com entrega (sprint sem atraso conta 0). Atrasado = tag Delayed (conta na sprint da tag) ou fechado depois do fim da sprint planejada.',
   adherence:
-    'SP entregues ÷ capacity × 100, só nas sprints em que a pessoa tem alocação (as outras não entram). Capacity = dias alocados (% × dias válidos) × capacity points/dia do nível atual, somada em todas as squads.',
+    'SP entregues ÷ capacity × 100, só nas sprints em que a pessoa tem alocação. Em cada sprint, a entrega conta no máximo até o Max (carga cheia de 8h/dia, 40h/semana, no nível da pessoa); o excedente não aumenta a aderência e aparece como alerta de sobrecarga ou de entrega acima do nível atual. Capacity/Max = dias alocados (% × dias válidos) × points/dia do nível.',
   open: 'Itens da pessoa que ainda não estão Closed/Done nas sprints do filtro e os story points deles.',
   mix: 'Tipo de item com mais SP entregues; abaixo, os SP entregues por tipo (User Story, Bug, Enabler).',
 }
@@ -57,7 +57,7 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
       chart.baseOption({
         tooltip: { trigger: 'axis' },
         legend: { top: 0, textStyle: chart.textStyle },
-        xAxis: chart.categoryAxis(sprints.map((s) => s.label)),
+        xAxis: chart.sprintAxis(sprints.map((s) => s.label)),
         yAxis: chart.valueAxis(),
         series: [
           {
@@ -125,7 +125,7 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
     return chart.baseOption({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
       legend: { top: 0, type: 'scroll', textStyle: chart.textStyle },
-      xAxis: chart.categoryAxis(delivered.map((s) => s.label)),
+      xAxis: chart.sprintAxis(delivered.map((s) => s.label)),
       yAxis: chart.valueAxis(),
       series: metrics.squadNames.map((squad, index) => ({
         name: squad,
@@ -144,7 +144,7 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
       chart.baseOption({
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
         legend: { top: 0, type: 'scroll', textStyle: chart.textStyle },
-        xAxis: chart.categoryAxis(deliveredSprints.map((s) => s.label)),
+        xAxis: chart.sprintAxis(deliveredSprints.map((s) => s.label)),
         yAxis: chart.valueAxis(),
         series: metrics.byType.map(({ type }, index) => ({
           name: type,
@@ -167,7 +167,7 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
     return chart.baseOption({
       tooltip: { trigger: 'axis' },
       legend: { top: 0, textStyle: chart.textStyle },
-      xAxis: chart.categoryAxis(sprints.map((s) => s.label)),
+      xAxis: chart.sprintAxis(sprints.map((s) => s.label)),
       yAxis: chart.valueAxis(),
       series: [
         {
@@ -248,8 +248,12 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
   const tableItems = onlyDelayed ? metrics.items.filter((item) => item.delay.delayed) : metrics.items
   const capacityHint =
     metrics.allocatedSprints > 0
-      ? `${metrics.deliveredOnAllocatedSprints} SP em ${metrics.allocatedSprints} sprint(s) com alocação · capacity ${metrics.capacity} SP`
+      ? `${metrics.deliveredOnAllocatedSprints} de ${metrics.capacity} SP de capacity · ${metrics.allocatedSprints} sprint(s) com alocação`
       : 'Sem alocação nas sprints'
+  const overloadAlert =
+    metrics.overloadSprints.length > 0
+      ? `${metrics.overloadPoints} SP acima do Max em ${metrics.overloadSprints.length} sprint(s) — sobrecarga ou acima do nível`
+      : undefined
   const comparison = peerAverage > 0 ? `Média do time: ${peerAverage} SP/sprint` : 'Sem outros devs para comparar'
 
   return (
@@ -263,22 +267,26 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
         <SegmentedControl aria-label="Atribuição dos pontos" options={ATTRIBUTION_OPTIONS} value={mode} onChange={onModeChange} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="SP entregues" info={INFO.delivered} value={metrics.delivered} hint={`${metrics.itemsDelivered} item(ns) fechados`} />
         <StatCard label="Média de entrega" info={INFO.average} value={`${metrics.averagePerSprint} SP/sprint`} hint={comparison} />
         <StatCard
-          label="Média de SP atrasados" info={INFO.averageDelayed}
+          label="Média de SP atrasados"
+          info={INFO.averageDelayed}
           value={`${metrics.averageDelayedPerSprint} SP/sprint`}
           hint={`${metrics.delayedPoints} SP atrasados · ${metrics.delayedPercent}% do entregue`}
         />
         <StatCard
-          label="Aderência à capacity" info={INFO.adherence}
+          label="Aderência à capacity"
+          info={INFO.adherence}
           value={metrics.capacityAdherence === null ? '—' : `${metrics.capacityAdherence}%`}
           hint={capacityHint}
+          alert={overloadAlert}
         />
         <StatCard label="Em aberto" info={INFO.open} value={`${metrics.openPoints} SP`} hint={`${metrics.itemsOpen} item(ns) não fechados`} />
         <StatCard
-          label="Mix entregue" info={INFO.mix}
+          label="Mix entregue"
+          info={INFO.mix}
           value={metrics.byType[0]?.type ?? '—'}
           hint={metrics.byType.map((t) => `${t.type}: ${t.points}`).join(' · ') || 'Nada entregue'}
         />

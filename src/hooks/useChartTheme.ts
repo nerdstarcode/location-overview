@@ -14,6 +14,9 @@ import { stateColors, type ColorMode } from '../lib/stateColors'
 
 type AxisOption = Record<string, unknown>
 
+/** Acima disso, os rótulos de sprint do eixo X ficam inclinados para caber. */
+const SPRINT_LABELS_BEFORE_ROTATE = 6
+
 export interface ChartTheme {
   theme: ThemeVars
   palette: string[]
@@ -26,6 +29,8 @@ export interface ChartTheme {
   /** Fundo transparente, cor de texto e grid padrão; `overrides` sobrescreve o que precisar. */
   baseOption: (overrides?: EChartsOption) => EChartsOption
   categoryAxis: (data: string[], extra?: AxisOption) => AxisOption
+  /** Eixo de sprints ("Sprint 08 - FY25-26"): esconde rótulos sobrepostos e inclina quando há muitas sprints. */
+  sprintAxis: (labels: string[]) => AxisOption
   valueAxis: (extra?: AxisOption) => AxisOption
   /** Modo de cor ativo (padrão, daltônico ou alto contraste) — ver lib/stateColors. */
   colorMode: ColorMode
@@ -77,6 +82,12 @@ export function useChartTheme(): ChartTheme {
       grid,
       baseOption: (overrides = {}) => ({ backgroundColor: 'transparent', textStyle, grid, ...overrides }),
       categoryAxis: (data, extra = {}) => ({ type: 'category', data, axisLabel: textStyle, axisLine, ...extra }),
+      sprintAxis: (labels) => ({
+        type: 'category',
+        data: labels,
+        axisLine,
+        axisLabel: { ...textStyle, hideOverlap: true, rotate: labels.length > SPRINT_LABELS_BEFORE_ROTATE ? 30 : 0 },
+      }),
       valueAxis: (extra = {}) => ({ type: 'value', axisLabel: textStyle, axisLine, splitLine, ...extra }),
     }
   }, [theme, colorblind, highContrast])

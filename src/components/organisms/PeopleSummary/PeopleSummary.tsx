@@ -23,7 +23,7 @@ const INFO = {
   delivered: 'Soma dos SP fechados (Closed/Done) de todas as pessoas listadas, no prazo e atrasados.',
   averageDev: 'Média, entre as pessoas que entregaram algo, da média de SP por sprint de cada uma.',
   adherence:
-    'Soma do que as pessoas entregaram nas sprints com alocação ÷ soma da capacity delas × 100 (mesma regra do card da pessoa).',
+    'Soma do que as pessoas entregaram nas sprints com alocação (cada sprint limitada ao Max da pessoa) ÷ soma da capacity delas × 100, mesma regra do card da pessoa.',
   open: 'SP dos itens das pessoas listadas que ainda não estão Closed/Done.',
   executed: 'Soma dos testes executados (runBy no Azure) pelas pessoas listadas.',
   averageQa: 'Média, entre as pessoas que executaram testes, da média de testes por sprint de cada uma.',
@@ -197,6 +197,13 @@ export function PeopleSummary({ rows, view, mode, onModeChange, onOpenPerson }: 
         cell: ({ row }) => formatPercent(row.original.dev.capacityAdherence),
         meta: { align: 'right', numeric: true },
       },
+      {
+        id: 'overload',
+        header: 'Acima do Max (SP)',
+        accessorFn: (r) => r.dev.overloadPoints,
+        cell: ({ row }) => (row.original.dev.overloadPoints > 0 ? row.original.dev.overloadPoints : '—'),
+        meta: { align: 'right', numeric: true },
+      },
       { id: 'open', header: 'Em aberto (SP)', accessorFn: (r) => r.dev.openPoints, meta: { align: 'right', numeric: true } },
     ],
     [],
@@ -235,6 +242,13 @@ export function PeopleSummary({ rows, view, mode, onModeChange, onOpenPerson }: 
         cell: ({ row }) => formatPercent(row.original.qa.capacityAdherence),
         meta: { align: 'right', numeric: true },
       },
+      {
+        id: 'overload',
+        header: 'Acima do Max (PE)',
+        accessorFn: (r) => r.qa.overloadPoints,
+        cell: ({ row }) => (row.original.qa.overloadPoints > 0 ? row.original.qa.overloadPoints : '—'),
+        meta: { align: 'right', numeric: true },
+      },
       { id: 'testCases', header: 'Test Cases', accessorFn: (r) => r.qa.testCases, meta: { align: 'right', numeric: true } },
     ],
     [],
@@ -252,7 +266,7 @@ export function PeopleSummary({ rows, view, mode, onModeChange, onOpenPerson }: 
           <div className="flex justify-end">
             <SegmentedControl aria-label="Atribuição dos pontos" options={ATTRIBUTION_OPTIONS} value={mode} onChange={onModeChange} />
           </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
             <StatCard label="Pessoas" value={visible.length} info={INFO.people} />
             <StatCard
               label="SP entregues"
@@ -271,7 +285,7 @@ export function PeopleSummary({ rows, view, mode, onModeChange, onOpenPerson }: 
           </div>
         </>
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
           <StatCard label="Pessoas" value={visible.length} info={INFO.people} />
           <StatCard label="Testes executados" value={executed} info={INFO.executed} />
           <StatCard label="Média por pessoa" value={`${teamAverage} testes/sprint`} info={INFO.averageQa} />

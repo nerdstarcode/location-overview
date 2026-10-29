@@ -188,18 +188,26 @@ function averageOfActive(values: number[]): number {
 }
 
 /**
- * Entrega ÷ capacity só nas sprints com alocação: numa sprint sem alocação não há com o que
- * comparar, e somar a entrega dela inflaria a aderência.
+ * Aderência conservadora, só nas sprints com alocação (sem alocação não há com o que comparar):
+ * em cada sprint a entrega conta no máximo até o Max — a carga cheia de 8h/dia (40h/semana)
+ * no nível da pessoa. O que passa do Max não infla a aderência; vira `overload`, sinal de
+ * sobrecarga ou de que a pessoa entrega acima do nível cadastrado.
  */
-function allocationAdherence<T extends { capacity: number }>(sprints: T[], deliveredOf: (sprint: T) => number) {
+function allocationAdherence<T extends { label: string; capacity: number; max: number }>(
+  sprints: T[],
+  deliveredOf: (sprint: T) => number,
+) {
   const allocated = sprints.filter((sprint) => sprint.capacity > 0)
   const capacity = allocated.reduce((total, sprint) => total + sprint.capacity, 0)
-  const delivered = allocated.reduce((total, sprint) => total + deliveredOf(sprint), 0)
+  const counted = allocated.reduce((total, sprint) => total + Math.min(deliveredOf(sprint), sprint.max), 0)
+  const overloaded = allocated.filter((sprint) => deliveredOf(sprint) > sprint.max)
   return {
     capacity: round1(capacity),
-    deliveredOnAllocatedSprints: round1(delivered),
+    deliveredOnAllocatedSprints: round1(counted),
     allocatedSprints: allocated.length,
-    capacityAdherence: capacity > 0 ? percentOf(delivered, capacity) : null,
+    capacityAdherence: capacity > 0 ? percentOf(counted, capacity) : null,
+    overloadPoints: round1(overloaded.reduce((total, sprint) => total + deliveredOf(sprint) - sprint.max, 0)),
+    overloadSprints: overloaded.map((sprint) => sprint.label),
   }
 }
 
@@ -278,11 +286,14 @@ export interface PersonDevMetrics {
   openPoints: number
   /** Capacity da Alocação somada nas sprints do filtro. */
   capacity: number
-  /** SP entregues só nas sprints com alocação (o numerador da aderência). */
+  /** SP entregues nas sprints com alocação, cada sprint limitada ao Max (o numerador da aderência). */
   deliveredOnAllocatedSprints: number
   allocatedSprints: number
-  /** Entregue ÷ capacity nas sprints com alocação, em %; null sem alocação. */
+  /** Entregue (limitado ao Max) ÷ capacity nas sprints com alocação, em %; null sem alocação. */
   capacityAdherence: number | null
+  /** SP entregues acima do Max nas sprints com alocação: sobrecarga ou acima do nível atual. */
+  overloadPoints: number
+  overloadSprints: string[]
   byType: { type: string; points: number }[]
 }
 
@@ -406,11 +417,14 @@ export interface PersonQaMetrics {
   testCases: number
   /** Capacity da Alocação somada nas sprints do filtro. */
   capacity: number
-  /** Pontos de Execução só nas sprints com alocação (o numerador da aderência). */
+  /** Pontos de Execução nas sprints com alocação, cada sprint limitada ao Max (o numerador da aderência). */
   deliveredOnAllocatedSprints: number
   allocatedSprints: number
-  /** Pontos de Execução ÷ capacity nas sprints com alocação, em %; null sem alocação. */
+  /** Pontos de Execução (limitados ao Max) ÷ capacity nas sprints com alocação, em %; null sem alocação. */
   capacityAdherence: number | null
+  /** Pontos de Execução acima do Max nas sprints com alocação: sobrecarga ou acima do nível atual. */
+  overloadPoints: number
+  overloadSprints: string[]
   /** false quando nenhuma sincronização trouxe test results desta pessoa. */
   hasExecutions: boolean
 }

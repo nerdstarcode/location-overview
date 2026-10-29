@@ -217,6 +217,26 @@ describe('computePersonDevMetrics', () => {
     ])
   })
 
+  it('aderência conta no máximo o Max por sprint e sinaliza o excedente como sobrecarga', () => {
+    const heavy = row({
+      id: 7,
+      workItemType: 'User Story',
+      assignedTo: ADA,
+      storyPoints: 13,
+      iterationPath: 'Portal\\Sprint 09 - FY25-26',
+    })
+    const metrics = computePersonDevMetrics({ ...base, rows: [...rows, heavy], person: ada })
+    // Sprint 09: 50% de 10 dias × 1,5 SP/dia = Max 7,5; entregou 13 → conta 7,5 e sobram 5,5.
+    expect(metrics).toMatchObject({
+      delivered: 21,
+      deliveredOnAllocatedSprints: 15.5,
+      capacity: 15,
+      capacityAdherence: 103.3,
+      overloadPoints: 5.5,
+      overloadSprints: ['Sprint 09 - FY25-26'],
+    })
+  })
+
   it('filtra por ano fiscal', () => {
     const otherYear = row({
       id: 6,
