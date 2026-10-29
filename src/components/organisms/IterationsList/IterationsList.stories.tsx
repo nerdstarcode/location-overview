@@ -24,6 +24,24 @@ export const ComSprints: Story = {
   },
 }
 
+export const ComSelecaoESincronizacao: Story = {
+  args: {
+    iterations: FIXTURE_ITERATIONS,
+    selectedIds: new Set([FIXTURE_ITERATIONS[0].id]),
+    onToggleRow: fn(),
+    onTogglePage: fn(),
+    syncStatus: { [FIXTURE_ITERATIONS[0].id]: { status: 'running' }, [FIXTURE_ITERATIONS[1].id]: { status: 'pending' } },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByText('Sincronizando…')).toBeInTheDocument()
+    await expect(canvas.getByText('Na fila')).toBeInTheDocument()
+    await userEvent.click(canvas.getByRole('checkbox', { name: `Selecionar ${FIXTURE_ITERATIONS[1].name}` }))
+    await expect(args.onToggleRow).toHaveBeenCalledWith(FIXTURE_ITERATIONS[1])
+    await expect(args.onOpen).not.toHaveBeenCalled()
+  },
+}
+
 export const Vazia: Story = {
   args: { iterations: [] },
   play: async ({ canvasElement }) => {
