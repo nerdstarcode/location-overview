@@ -4,11 +4,13 @@ import type { Person } from './peopleStorage'
 import type { PersonAllocation } from './personAllocationsStorage'
 import {
   attributeDevPoints,
+  computePeopleSummary,
   computePersonDevMetrics,
   computePersonQaMetrics,
   delayInfo,
   isPersonItem,
   peerAveragePerSprint,
+  sizeDistribution,
 } from './personMetrics'
 import type { Sprint } from './sprintsStorage'
 import type { TestExecution } from './testExecutionsStorage'
@@ -128,8 +130,16 @@ describe('computePersonDevMetrics', () => {
   it('agrupa pela sprint planejada (a da tag Delayed), separa no prazo × atrasado e por squad', () => {
     const metrics = computePersonDevMetrics({ ...base, person: ada })
     expect(metrics.sprints).toEqual([
-      { label: 'Sprint 08 - FY25-26', onTime: 5, delayed: 3, capacity: 10, max: 15, bySquad: { 'Sem squad': 5, Portal: 3 } },
-      { label: 'Sprint 09 - FY25-26', onTime: 0, delayed: 0, capacity: 5, max: 7.5, bySquad: {} },
+      {
+        label: 'Sprint 08 - FY25-26',
+        onTime: 5,
+        delayed: 3,
+        capacity: 10,
+        max: 15,
+        bySquad: { 'Sem squad': 5, Portal: 3 },
+        byType: { 'User Story': 8 },
+      },
+      { label: 'Sprint 09 - FY25-26', onTime: 0, delayed: 0, capacity: 5, max: 7.5, bySquad: {}, byType: {} },
     ])
     expect(metrics.squadNames).toEqual(['Sem squad', 'Portal'])
     expect(metrics).toMatchObject({
@@ -162,6 +172,76 @@ describe('computePersonDevMetrics', () => {
       capacity: 15,
       capacityAdherence: 53.3,
     })
+  })
+
+  it('filtro de squad vale para itens (Iteration Path) e capacity (squad da alocação)', () => {
+    const backoffice = { id: 'sq2', name: 'Backoffice' }
+    const metrics = computePersonDevMetrics({
+      ...base,
+      squads: [...squads, backoffice],
+      allocations: [...allocations, { id: 'a3', personId: 'p-ada', squadId: 'sq2', sprintId: 's8', percentage: 20 }],
+      person: ada,
+      selectedSquads: ['Backoffice'],
+    })
+    expect(metrics.delivered).toBe(5)
+    expect(metrics.squadNames).toEqual(['Backoffice'])
+    // Só a alocação de 20% na Backoffice: 2 dias × 1 SP/dia.
+    expect(metrics.capacity).toBe(2)
+  })
+
+  it('distribui os itens entregues por tamanho (SP do item inteiro)', () => {
+    const metrics = computePersonDevMetrics({ ...base, person: ada })
+    expect(sizeDistribution(metrics.items)).toEqual([
+      { bucket: 'Sem SP', count: 0 },
+      { bucket: '1', count: 0 },
+      { bucket: '2', count: 0 },
+      { bucket: '3', count: 1 },
+      { bucket: '5', count: 1 },
+      { bucket: '8', count: 0 },
+      { bucket: '13', count: 0 },
+      { bucket: '13+', count: 0 },
+    ])
+  })
+
+  it('resumo traz quem tem atividade nos filtros, com o tipo do cargo', () => {
+    const idle: Person = { ...alan, id: 'p-idle', nome: 'Zé', email: 'ze@example.com' }
+    const summary = computePeopleSummary({
+      ...base,
+      people: [idle, ada, alan],
+      cargos: [{ id: 'c1', cargo: 'Dev', tipo: 'Dev', nivel: 'SR' }],
+      executions: [],
+    })
+    expect(summary.map((r) => [r.person.nome, r.tipo, r.dev.delivered])).toEqual([
+      ['Ada Lovelace', 'Dev', 8],
+      ['Alan Turing', 'Dev', 4],
+    ])
+  })
+
+  it('filtra por ano fiscal', () => {
+    const otherYear = row({
+      id: 6,
+      workItemType: 'User Story',
+      assignedTo: ADA,
+      storyPoints: 13,
+      iterationPath: 'Portal\\Sprint 01 - FY26-27',
+    })
+    const metrics = computePersonDevMetrics({ ...base, rows: [...rows, otherYear], person: ada, selectedFiscalYears: ['FY26-27'] })
+    expect(metrics.sprints.map((s) => s.label)).toEqual(['Sprint 01 - FY26-27'])
+    expect(metrics.delivered).toBe(13)
+  })
+
+  it('"só sprints com alocação" ignora entrega e itens de sprint sem alocação da pessoa', () => {
+    const unallocated = row({
+      id: 5,
+      workItemType: 'User Story',
+      assignedTo: ADA,
+      storyPoints: 20,
+      iterationPath: 'Portal\\Sprint 10 - FY25-26',
+    })
+    const metrics = computePersonDevMetrics({ ...base, rows: [...rows, unallocated], person: ada, onlyAllocatedSprints: true })
+    expect(metrics.sprints.map((s) => s.label)).toEqual(['Sprint 08 - FY25-26', 'Sprint 09 - FY25-26'])
+    expect(metrics.delivered).toBe(8)
+    expect(metrics.averagePerSprint).toBe(8)
   })
 
   it('respeita as sprints selecionadas', () => {

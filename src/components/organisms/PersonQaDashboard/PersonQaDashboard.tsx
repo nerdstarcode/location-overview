@@ -94,6 +94,52 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
     [sprints, metrics.averageExecutedPerSprint, chart],
   )
 
+  const executedSprints = useMemo(() => sprints.filter((s) => s.executed > 0), [sprints])
+
+  const squadOption: EChartsOption = useMemo(
+    () =>
+      chart.baseOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        legend: { top: 0, type: 'scroll', textStyle: chart.textStyle },
+        xAxis: chart.categoryAxis(executedSprints.map((s) => s.label)),
+        yAxis: chart.valueAxis({ minInterval: 1 }),
+        series: metrics.squadNames.map((squad, index) => ({
+          name: squad,
+          type: 'bar',
+          data: executedSprints.map((s) => s.bySquad[squad] ?? 0),
+          itemStyle: { color: chart.palette[index % chart.palette.length], ...chart.paletteBorder },
+          barMaxWidth: 28,
+        })),
+      }),
+    [executedSprints, metrics.squadNames, chart],
+  )
+
+  const passRateOption: EChartsOption = useMemo(
+    () =>
+      chart.baseOption({
+        tooltip: { trigger: 'axis', valueFormatter: (value) => `${value}%` },
+        xAxis: chart.categoryAxis(executedSprints.map((s) => s.label)),
+        yAxis: chart.valueAxis({ min: 0, max: 100, axisLabel: { ...chart.textStyle, formatter: '{value}%' } }),
+        series: [
+          {
+            name: '% Passed',
+            type: 'line',
+            data: executedSprints.map((s) => round1((s.passed / s.executed) * 100)),
+            itemStyle: { color: chart.palette[1] },
+            lineStyle: { width: 3 },
+            symbol: 'circle',
+            markLine: {
+              symbol: 'none',
+              label: { color: chart.theme.text, formatter: 'Geral: {c}%', position: 'insideEndTop' },
+              lineStyle: { color: chart.theme.text, type: 'dashed' },
+              data: [{ yAxis: metrics.passedPercent, name: '% Passed geral' }],
+            },
+          },
+        ],
+      }),
+    [executedSprints, metrics.passedPercent, chart],
+  )
+
   const columns = useMemo<ColumnDef<PersonQaItem, unknown>[]>(
     () => [
       { id: 'id', header: 'ID', accessorFn: (item) => item.row.id, meta: { align: 'right', headerAlign: 'left', numeric: true } },
@@ -150,6 +196,26 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
       >
         <ReactECharts option={option} style={{ height: 320 }} notMerge />
       </ChartCard>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard
+          title="Testes executados por sprint e squad"
+          description="Resultados executados pela pessoa em cada sprint, uma barra por squad (a squad da sincronização)."
+          isEmpty={executedSprints.length === 0}
+          emptyMessage="Nenhum teste executado nas sprints selecionadas."
+        >
+          <ReactECharts option={squadOption} style={{ height: 300 }} notMerge />
+        </ChartCard>
+
+        <ChartCard
+          title="% Passed por sprint"
+          description="Passed ÷ executados em cada sprint; a linha tracejada é o % geral do período."
+          isEmpty={executedSprints.length === 0}
+          emptyMessage="Nenhum teste executado nas sprints selecionadas."
+        >
+          <ReactECharts option={passRateOption} style={{ height: 300 }} notMerge />
+        </ChartCard>
+      </div>
 
       <ChartCard title="Test Cases" description="Clique num item para ver o detalhe e buscar o histórico no Azure.">
         <DataTable

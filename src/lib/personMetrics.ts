@@ -1,5 +1,6 @@
 import { toDateKey } from './dates'
 import { round1, percentOf } from './numbers'
+import type { CargoConfig, CargoTipo } from './cargosStorage'
 import type { LevelConfig } from './levelsStorage'
 import type { Person } from './peopleStorage'
 import { pointsForEntry, type PersonAllocation } from './personAllocationsStorage'
@@ -150,16 +151,23 @@ export function attributeDevPoints(
 // ---------------------------------------------------------------------------
 // Capacity da pessoa (Alocação)
 
-function capacityBySprint(
-  person: Person,
-  allocations: PersonAllocation[],
-  sprints: Sprint[],
-  levels: LevelConfig[],
-): Map<string, { capacity: number; max: number }> {
+/** Squad do item pelo Iteration Path; sem match, NO_SQUAD_LABEL. */
+export function squadOfRow(squads: Squad[], row: Pick<WorkItemRow, 'iterationPath'>): string {
+  return findSquadNameForIterationPath(squads, row.iterationPath) ?? NO_SQUAD_LABEL
+}
+
+function squadSelected(squadName: string, selectedSquads: string[] | undefined): boolean {
+  return !selectedSquads || selectedSquads.length === 0 || selectedSquads.includes(squadName)
+}
+
+function capacityBySprint(input: PersonMetricsInput): Map<string, { capacity: number; max: number }> {
+  const { person, allocations, sprints, levels } = input
   const sprintsById = new Map(sprints.map((s) => [s.id, s]))
+  const squadsById = new Map((input.squads ?? []).map((s) => [s.id, s.name]))
   const result = new Map<string, { capacity: number; max: number }>()
   for (const entry of allocations) {
     if (entry.personId !== person.id) continue
+    if (!squadSelected(squadsById.get(entry.squadId) ?? NO_SQUAD_LABEL, input.selectedSquads)) continue
     const sprint = sprintsById.get(entry.sprintId)
     if (!sprint) continue
     const { capacity, max } = pointsForEntry(entry, sprint, person, levels)
@@ -195,8 +203,25 @@ function allocationAdherence<T extends { capacity: number }>(sprints: T[], deliv
   }
 }
 
-function inSelection(label: string, selectedSprints: string[]): boolean {
-  return selectedSprints.length === 0 || selectedSprints.includes(label)
+function roundValues(record: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, round1(value)]))
+}
+
+/** "FY25-26" de "Sprint 08 - FY25-26". */
+export function fiscalYearOfLabel(label: string): string {
+  return label.match(/FY\d{2}-\d{2}/i)?.[0].toUpperCase() ?? ''
+}
+
+/**
+ * Sprints consideradas: as escolhidas (vazio = todas), dos anos fiscais escolhidos (vazio =
+ * todos) e, com `onlyAllocatedSprints`, só as que têm alocação da pessoa (`allocated`).
+ */
+function sprintFilter(input: PersonMetricsInput, allocated: Map<string, unknown>): (label: string) => boolean {
+  const { selectedSprints, selectedFiscalYears = [], onlyAllocatedSprints = false } = input
+  return (label) =>
+    (selectedSprints.length === 0 || selectedSprints.includes(label)) &&
+    (selectedFiscalYears.length === 0 || selectedFiscalYears.includes(fiscalYearOfLabel(label))) &&
+    (!onlyAllocatedSprints || allocated.has(label))
 }
 
 export interface PersonMetricsInput {
@@ -207,8 +232,17 @@ export interface PersonMetricsInput {
   levels: LevelConfig[]
   /** Sprints ("Sprint NN - FYxx-yy") consideradas; vazio = todas. */
   selectedSprints: string[]
+  /** Anos fiscais ("FY25-26") considerados; vazio = todos. */
+  selectedFiscalYears?: string[]
+  /** Só as sprints em que a pessoa tem alocação (respeitando o filtro de squad). */
+  onlyAllocatedSprints?: boolean
   /** Squads da base, para separar as entregas por squad (pelo Iteration Path). */
   squads?: Squad[]
+  /**
+   * Nomes de squad considerados; vazio = todas. Filtra os itens (squad do Iteration Path),
+   * a capacity (squad da alocação) e os testes executados (squad da sincronização).
+   */
+  selectedSquads?: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +259,8 @@ export interface PersonDevSprint {
   max: number
   /** SP entregues por squad nesta sprint. */
   bySquad: Record<string, number>
+  /** SP entregues por Work Item Type nesta sprint. */
+  byType: Record<string, number>
 }
 
 export interface PersonDevMetrics {
@@ -254,19 +290,21 @@ export function computePersonDevMetrics(
   input: PersonMetricsInput & { mode: DevAttribution; pointTypes: string[] },
 ): PersonDevMetrics {
   const sprintsByLabel = new Map(input.sprints.map((s) => [formatSprintLabel(s), s]))
-  const items = attributeDevPoints(input.rows, input.person, input.mode, input.pointTypes, sprintsByLabel).filter((item) =>
-    inSelection(plannedSprintLabel(item.row), input.selectedSprints),
+  const capacity = capacityBySprint(input)
+  const inSprint = sprintFilter(input, capacity)
+  const items = attributeDevPoints(input.rows, input.person, input.mode, input.pointTypes, sprintsByLabel).filter(
+    (item) =>
+      inSprint(plannedSprintLabel(item.row)) && squadSelected(squadOfRow(input.squads ?? [], item.row), input.selectedSquads),
   )
-  const capacity = capacityBySprint(input.person, input.allocations, input.sprints, input.levels)
 
   const bySprint = new Map<string, PersonDevSprint>()
   const sprintEntry = (label: string) => {
-    const entry = bySprint.get(label) ?? { label, onTime: 0, delayed: 0, capacity: 0, max: 0, bySquad: {} }
+    const entry = bySprint.get(label) ?? { label, onTime: 0, delayed: 0, capacity: 0, max: 0, bySquad: {}, byType: {} }
     bySprint.set(label, entry)
     return entry
   }
   for (const [label, { capacity: cap, max }] of capacity) {
-    if (!inSelection(label, input.selectedSprints)) continue
+    if (!inSprint(label)) continue
     Object.assign(sprintEntry(label), { capacity: cap, max })
   }
   const closed = items.filter((item) => isClosed(item.row))
@@ -277,8 +315,9 @@ export function computePersonDevMetrics(
     const entry = sprintEntry(label)
     if (item.delay.delayed) entry.delayed += item.points
     else entry.onTime += item.points
-    const squad = findSquadNameForIterationPath(input.squads ?? [], item.row.iterationPath) ?? NO_SQUAD_LABEL
+    const squad = squadOfRow(input.squads ?? [], item.row)
     entry.bySquad[squad] = (entry.bySquad[squad] ?? 0) + item.points
+    entry.byType[item.row.workItemType] = (entry.byType[item.row.workItemType] ?? 0) + item.points
     totalBySquad.set(squad, (totalBySquad.get(squad) ?? 0) + item.points)
   }
   const sprints = [...bySprint.values()]
@@ -288,7 +327,8 @@ export function computePersonDevMetrics(
       delayed: round1(s.delayed),
       capacity: round1(s.capacity),
       max: round1(s.max),
-      bySquad: Object.fromEntries(Object.entries(s.bySquad).map(([squad, points]) => [squad, round1(points)])),
+      bySquad: roundValues(s.bySquad),
+      byType: roundValues(s.byType),
     }))
     .sort((a, b) => compareSprintLabels(a.label, b.label))
 
@@ -340,6 +380,8 @@ export interface PersonQaSprint {
   executionPoints: number
   capacity: number
   max: number
+  /** Testes executados por squad nesta sprint. */
+  bySquad: Record<string, number>
 }
 
 export interface PersonQaItem {
@@ -350,6 +392,8 @@ export interface PersonQaItem {
 
 export interface PersonQaMetrics {
   sprints: PersonQaSprint[]
+  /** Squads com testes executados, da que mais teve para a que menos teve. */
+  squadNames: string[]
   items: PersonQaItem[]
   executed: number
   passed: number
@@ -374,35 +418,46 @@ export interface PersonQaMetrics {
 export function computePersonQaMetrics(input: PersonMetricsInput & { executions: TestExecution[] }): PersonQaMetrics {
   const sprintsByLabel = new Map(input.sprints.map((s) => [formatSprintLabel(s), s]))
   const sprintsById = new Map(input.sprints.map((s) => [s.id, s]))
-  const capacity = capacityBySprint(input.person, input.allocations, input.sprints, input.levels)
+  const squadNamesById = new Map((input.squads ?? []).map((s) => [s.id, s.name]))
+  const capacity = capacityBySprint(input)
+  const inSprint = sprintFilter(input, capacity)
 
   const bySprint = new Map<string, PersonQaSprint>()
   const sprintEntry = (label: string) => {
     const entry =
-      bySprint.get(label) ?? { label, executed: 0, passed: 0, failed: 0, other: 0, executionPoints: 0, capacity: 0, max: 0 }
+      bySprint.get(label) ?? { label, executed: 0, passed: 0, failed: 0, other: 0, executionPoints: 0, capacity: 0, max: 0, bySquad: {} }
     bySprint.set(label, entry)
     return entry
   }
   for (const [label, { capacity: cap, max }] of capacity) {
-    if (inSelection(label, input.selectedSprints)) Object.assign(sprintEntry(label), { capacity: cap, max })
+    if (inSprint(label)) Object.assign(sprintEntry(label), { capacity: cap, max })
   }
 
-  const executions = input.executions.filter((e) => isPersonItem({ email: e.email, assignedTo: e.name }, input.person))
+  const executions = input.executions.filter(
+    (e) =>
+      isPersonItem({ email: e.email, assignedTo: e.name }, input.person) &&
+      squadSelected(squadNamesById.get(e.squadId) ?? NO_SQUAD_LABEL, input.selectedSquads),
+  )
+  const executedBySquad = new Map<string, number>()
   for (const execution of executions) {
     const sprint = sprintsById.get(execution.sprintId)
     if (!sprint) continue
     const label = formatSprintLabel(sprint)
-    if (!inSelection(label, input.selectedSprints)) continue
+    if (!inSprint(label)) continue
     const entry = sprintEntry(label)
     entry.executed += execution.executed
     entry.passed += execution.passed
     entry.failed += execution.failed
     entry.other += execution.other
+    const squad = squadNamesById.get(execution.squadId) ?? NO_SQUAD_LABEL
+    entry.bySquad[squad] = (entry.bySquad[squad] ?? 0) + execution.executed
+    executedBySquad.set(squad, (executedBySquad.get(squad) ?? 0) + execution.executed)
   }
 
   const items: PersonQaItem[] = input.rows
     .filter((row) => isType(row, QA_ITEM_TYPES) && isPersonItem(row, input.person))
-    .filter((row) => inSelection(plannedSprintLabel(row), input.selectedSprints))
+    .filter((row) => inSprint(plannedSprintLabel(row)))
+    .filter((row) => squadSelected(squadOfRow(input.squads ?? [], row), input.selectedSquads))
     .map((row) => ({
       row,
       executionPoints: (row.pontoExecucao * row.runs) / EXECUTION_POINTS_PER_STORY_POINT,
@@ -422,6 +477,7 @@ export function computePersonQaMetrics(input: PersonMetricsInput & { executions:
 
   return {
     sprints,
+    squadNames: [...executedBySquad.entries()].sort((a, b) => b[1] - a[1]).map(([squad]) => squad),
     items,
     executed,
     passed: sum((s) => s.passed),
@@ -435,4 +491,68 @@ export function computePersonQaMetrics(input: PersonMetricsInput & { executions:
     ...allocationAdherence(sprints, (s) => s.executionPoints),
     hasExecutions: executions.length > 0,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Tamanho dos itens
+
+/** Faixas de story points (Fibonacci); cada item cai na menor faixa que o comporta. */
+const SIZE_BUCKETS = [
+  { label: '1', upTo: 1 },
+  { label: '2', upTo: 2 },
+  { label: '3', upTo: 3 },
+  { label: '5', upTo: 5 },
+  { label: '8', upTo: 8 },
+  { label: '13', upTo: 13 },
+  { label: '13+', upTo: Infinity },
+]
+export const UNSIZED_LABEL = 'Sem SP'
+
+/** Itens fechados por tamanho (SP do item inteiro, não da fatia), para ver o perfil de entrega. */
+export function sizeDistribution(items: PersonDevItem[]): { bucket: string; count: number }[] {
+  const counts = new Map<string, number>([[UNSIZED_LABEL, 0], ...SIZE_BUCKETS.map(({ label }) => [label, 0] as const)])
+  for (const { row } of items) {
+    if (!isClosed(row)) continue
+    const bucket =
+      row.storyPoints > 0 ? (SIZE_BUCKETS.find(({ upTo }) => row.storyPoints <= upTo)?.label ?? '13+') : UNSIZED_LABEL
+    counts.set(bucket, (counts.get(bucket) ?? 0) + 1)
+  }
+  return [...counts.entries()].map(([bucket, count]) => ({ bucket, count }))
+}
+
+// ---------------------------------------------------------------------------
+// Resumo de todas as pessoas
+
+export interface PersonSummaryRow {
+  person: Person
+  tipo?: CargoTipo
+  dev: PersonDevMetrics
+  qa: PersonQaMetrics
+}
+
+export interface PeopleSummaryInput extends Omit<PersonMetricsInput, 'person'> {
+  people: Person[]
+  cargos: CargoConfig[]
+  executions: TestExecution[]
+  mode: DevAttribution
+  pointTypes: string[]
+}
+
+/**
+ * Métricas de Dev e QA de cada pessoa com os mesmos filtros (sprint/squad). Fica só quem
+ * tem algo nos filtros: item, teste executado ou alocação.
+ */
+export function computePeopleSummary(input: PeopleSummaryInput): PersonSummaryRow[] {
+  const tipoByCargo = new Map(input.cargos.map((c) => [c.cargo, c.tipo]))
+  return input.people
+    .map((person) => ({
+      person,
+      tipo: tipoByCargo.get(person.cargo),
+      dev: computePersonDevMetrics({ ...input, person }),
+      qa: computePersonQaMetrics({ ...input, person }),
+    }))
+    .filter(
+      ({ dev, qa }) => dev.items.length > 0 || dev.capacity > 0 || qa.executed > 0 || qa.testCases > 0 || qa.capacity > 0,
+    )
+    .sort((a, b) => a.person.nome.localeCompare(b.person.nome))
 }

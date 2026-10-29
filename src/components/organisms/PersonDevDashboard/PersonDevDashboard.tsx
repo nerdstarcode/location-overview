@@ -11,7 +11,13 @@ import { DataTable } from '../DataTable/DataTable'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
 import { CLOSED_STATES } from '../../../lib/workItems'
-import { DELAY_REASON_LABEL, type DevAttribution, type PersonDevItem, type PersonDevMetrics } from '../../../lib/personMetrics'
+import {
+  DELAY_REASON_LABEL,
+  sizeDistribution,
+  type DevAttribution,
+  type PersonDevItem,
+  type PersonDevMetrics,
+} from '../../../lib/personMetrics'
 
 const ATTRIBUTION_OPTIONS: { value: DevAttribution; label: string }[] = [
   { value: 'assigned', label: 'Assigned To' },
@@ -131,6 +137,81 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
     })
   }, [sprints, metrics.squadNames, chart])
 
+  const deliveredSprints = useMemo(() => sprints.filter((s) => s.onTime + s.delayed > 0), [sprints])
+
+  const typeOption: EChartsOption = useMemo(
+    () =>
+      chart.baseOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        legend: { top: 0, type: 'scroll', textStyle: chart.textStyle },
+        xAxis: chart.categoryAxis(deliveredSprints.map((s) => s.label)),
+        yAxis: chart.valueAxis(),
+        series: metrics.byType.map(({ type }, index) => ({
+          name: type,
+          type: 'bar',
+          stack: 'type',
+          data: deliveredSprints.map((s) => s.byType[type] ?? 0),
+          itemStyle: { color: chart.palette[index % chart.palette.length], ...chart.paletteBorder },
+          barMaxWidth: 40,
+        })),
+      }),
+    [deliveredSprints, metrics.byType, chart],
+  )
+
+  // Acumulado sprint a sprint: mostra se a entrega acompanha a capacity ao longo do tempo.
+  const cumulativeOption: EChartsOption = useMemo(() => {
+    const points = sprints.reduce<{ delivered: number; capacity: number }[]>((acc, s) => {
+      const previous = acc[acc.length - 1] ?? { delivered: 0, capacity: 0 }
+      return [...acc, { delivered: round1(previous.delivered + s.onTime + s.delayed), capacity: round1(previous.capacity + s.capacity) }]
+    }, [])
+    return chart.baseOption({
+      tooltip: { trigger: 'axis' },
+      legend: { top: 0, textStyle: chart.textStyle },
+      xAxis: chart.categoryAxis(sprints.map((s) => s.label)),
+      yAxis: chart.valueAxis(),
+      series: [
+        {
+          name: 'Entregue (acumulado)',
+          type: 'line',
+          data: points.map((p) => p.delivered),
+          itemStyle: { color: chart.palette[0] },
+          lineStyle: { width: 3 },
+          areaStyle: { opacity: 0.15 },
+          symbol: 'circle',
+        },
+        {
+          name: 'Capacity (acumulada)',
+          type: 'line',
+          data: points.map((p) => p.capacity),
+          itemStyle: { color: chart.palette[2] },
+          lineStyle: { type: 'dashed' },
+          symbol: 'none',
+        },
+      ],
+    })
+  }, [sprints, chart])
+
+  const sizes = useMemo(() => sizeDistribution(metrics.items), [metrics.items])
+  const sizeOption: EChartsOption = useMemo(
+    () =>
+      chart.baseOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        xAxis: chart.categoryAxis(sizes.map((s) => s.bucket), { name: 'SP do item', nameLocation: 'middle', nameGap: 28 }),
+        yAxis: chart.valueAxis({ minInterval: 1 }),
+        series: [
+          {
+            name: 'Itens entregues',
+            type: 'bar',
+            data: sizes.map((s) => s.count),
+            itemStyle: { color: chart.palette[3], ...chart.paletteBorder },
+            barMaxWidth: 40,
+            label: { show: true, position: 'top', color: chart.theme.text, formatter: ({ dataIndex }: { dataIndex: number }) => (sizes[dataIndex].count ? String(sizes[dataIndex].count) : '') },
+          },
+        ],
+      }),
+    [sizes, chart],
+  )
+
   const columns = useMemo<ColumnDef<PersonDevItem, unknown>[]>(
     () => [
       { id: 'id', header: 'ID', accessorFn: (item) => item.row.id, meta: { align: 'right', headerAlign: 'left', numeric: true } },
@@ -220,6 +301,35 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
       >
         <ReactECharts option={squadOption} style={{ height: 320 }} notMerge />
       </ChartCard>
+
+      <ChartCard
+        title="Story Points entregues por tipo e sprint"
+        description="SP fechados por Work Item Type (User Story, Bug, Enabler…) em cada sprint."
+        isEmpty={deliveredSprints.length === 0}
+        emptyMessage="Nenhuma entrega nas sprints selecionadas."
+      >
+        <ReactECharts option={typeOption} style={{ height: 320 }} notMerge />
+      </ChartCard>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard
+          title="Entrega × capacity acumuladas"
+          description="Soma sprint a sprint do que foi entregue e da capacity da Alocação. Entrega acima da linha = acima do previsto."
+          isEmpty={sprints.length === 0}
+          emptyMessage="Nenhuma entrega ou alocação nas sprints selecionadas."
+        >
+          <ReactECharts option={cumulativeOption} style={{ height: 300 }} notMerge />
+        </ChartCard>
+
+        <ChartCard
+          title="Tamanho dos itens entregues"
+          description="Quantidade de itens fechados por faixa de story points (do item inteiro). Muitos itens grandes ou sem SP merecem atenção."
+          isEmpty={metrics.itemsDelivered === 0}
+          emptyMessage="Nenhum item entregue nas sprints selecionadas."
+        >
+          <ReactECharts option={sizeOption} style={{ height: 300 }} notMerge />
+        </ChartCard>
+      </div>
 
       <ChartCard title="Itens" description="Clique num item para ver o detalhe e buscar o histórico no Azure.">
         <DataTable
