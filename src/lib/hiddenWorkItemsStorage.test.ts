@@ -22,7 +22,7 @@ describe('hiddenWorkItemsStorage', () => {
   it('entra no backup', () => {
     toggleHiddenWorkItem(7)
     const backup = exportAllData()
-    expect(backup.hiddenWorkItems).toEqual([7])
+    expect(backup.data.hiddenWorkItems).toEqual([7])
     toggleHiddenWorkItem(7)
     importAllData(backup)
     expect(loadHiddenWorkItems()).toEqual([7])

@@ -25,7 +25,7 @@ export const DEFAULT_AZURE_CONFIG: AzureConfig = {
   pointTypes: ['User Story', 'Bug', 'Enabler'],
 }
 
-// Fica fora de backupStorage de propósito: o backup é exportado como arquivo e não deve levar o PAT.
+// O backup (backupStorage) leva esta configuração sem o PAT e, ao importar, mantém o PAT já salvo.
 const STORAGE_KEY = 'location-overview:azure-config'
 
 function isPartialConfig(value: unknown): value is Partial<AzureConfig> {
