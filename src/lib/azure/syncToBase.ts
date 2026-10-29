@@ -8,7 +8,10 @@ import { DEFAULT_TEST_POINTS_RATIO, loadTestReports, upsertTestReport } from '..
 import { normalizeKey } from '../text'
 import type { WorkItemRow } from '../workItems'
 import { loadWorkItems, mergeWorkItems, saveWorkItems } from '../workItemsStorage'
-import { iterationSprintInfo, testRunsToReportFields, type TestRunsSummary } from './mappers'
+import { getIterationWorkItems, listTestRuns } from './api'
+import type { AzureConfig } from './azureConfigStorage'
+import { isAbortError } from './client'
+import { azureWorkItemToRow, iterationSprintInfo, summarizeTestRuns, testRunsToReportFields, type TestRunsSummary } from './mappers'
 import type { AzureIteration, AzureTeamMember } from './types'
 
 /** Resultado de uma sincronização: o que foi gravado, ou por que nada foi gravado. */
@@ -160,4 +163,69 @@ export function syncSprintToBase(input: SprintSyncInput): SprintSyncResult {
     workItems: upsertWorkItems(input.workItems),
     testReport: syncTestReport(squad.id, sprintResult?.sprint, input.testRuns),
   }
+}
+
+export type IterationSyncStatus =
+  | { status: 'pending' | 'running' }
+  | { status: 'done'; result: SprintSyncResult }
+  | { status: 'error'; reason: string }
+
+/** Status de cada sprint do lote, por id da iteration. */
+export type IterationSyncProgress = Record<string, IterationSyncStatus>
+
+export interface IterationsSyncInput {
+  config: AzureConfig
+  project: string
+  teamName: string
+  members: AzureTeamMember[]
+  iterations: AzureIteration[]
+  signal?: AbortSignal
+  onProgress?: (progress: IterationSyncProgress) => void
+}
+
+async function fetchIterationTestRuns(
+  config: AzureConfig,
+  project: string,
+  iteration: AzureIteration,
+  signal?: AbortSignal,
+): Promise<TestRunsSummary | null> {
+  const { startDate, finishDate } = iteration.attributes
+  if (!startDate || !finishDate) return null
+  return summarizeTestRuns(await listTestRuns(config, project, startDate, finishDate, signal))
+}
+
+/**
+ * Busca no Azure e grava na base, uma sprint por vez, o mesmo que o "Salvar na base" da
+ * análise de cada sprint. Uma sprint com erro não interrompe as demais; o cancelamento
+ * (signal) interrompe o lote e propaga o AbortError.
+ */
+export async function syncIterationsToBase(input: IterationsSyncInput): Promise<IterationSyncProgress> {
+  const { config, project, signal, onProgress } = input
+  let progress: IterationSyncProgress = Object.fromEntries(input.iterations.map((it) => [it.id, { status: 'pending' }]))
+  const update = (id: string, status: IterationSyncStatus) => {
+    progress = { ...progress, [id]: status }
+    onProgress?.(progress)
+  }
+  onProgress?.(progress)
+
+  for (const iteration of input.iterations) {
+    signal?.throwIfAborted()
+    update(iteration.id, { status: 'running' })
+    try {
+      const items = await getIterationWorkItems(config, project, iteration.path, signal)
+      const testRuns = await fetchIterationTestRuns(config, project, iteration, signal)
+      const result = syncSprintToBase({
+        teamName: input.teamName,
+        members: input.members,
+        iteration,
+        workItems: items.map((item) => azureWorkItemToRow(item, config)),
+        testRuns,
+      })
+      update(iteration.id, { status: 'done', result })
+    } catch (error) {
+      if (isAbortError(error) || signal?.aborted) throw error
+      update(iteration.id, { status: 'error', reason: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  return progress
 }
