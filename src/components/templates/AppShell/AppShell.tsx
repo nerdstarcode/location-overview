@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { ChartColumn, ClipboardList, Cloud, Layers, LayoutDashboard, Menu, SlidersHorizontal, UserRound, Users } from 'lucide-react'
+import { ChartColumn, ClipboardList, Cloud, Layers, LayoutDashboard, LayoutGrid, Menu, SlidersHorizontal, UserRound, Users, UsersRound } from 'lucide-react'
 import { Sidebar } from '../../organisms/Sidebar/Sidebar'
 import { NavItem } from '../../molecules/NavItem/NavItem'
+import { NavGroup } from '../../molecules/NavGroup/NavGroup'
 import { ThemeToggle } from '../../atoms/ThemeToggle/ThemeToggle'
 import { ColorblindToggle } from '../../atoms/ColorblindToggle/ColorblindToggle'
 import { HighContrastToggle } from '../../atoms/HighContrastToggle/HighContrastToggle'
@@ -36,8 +37,11 @@ export function AppShell() {
       <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)}>
         <NavItem to="/" label="Alocação" icon={LayoutDashboard} exact />
         <NavItem to="/work-items" label="Work Items" icon={ClipboardList} />
-        <NavItem to="/dashboard/squad" label="Dashboard Squad" icon={ChartColumn} />
-        <NavItem to="/dashboard/pessoa" label="Dashboard Pessoa" icon={UserRound} />
+        <NavGroup label="Dashboards" icon={LayoutGrid} basePath="/dashboard">
+          <NavItem to="/dashboard/pessoas" label="Resumo" icon={UsersRound} />
+          <NavItem to="/dashboard/squad" label="Overview Squads" icon={ChartColumn} />
+          <NavItem to="/dashboard/pessoa" label="Métricas Individuais" icon={UserRound} />
+        </NavGroup>
         <NavItem to="/pessoas" label="Pessoas" icon={Users} />
         <NavItem to="/squads" label="Squads" icon={Layers} />
         <NavItem to="/niveis" label="Níveis" icon={SlidersHorizontal} />
