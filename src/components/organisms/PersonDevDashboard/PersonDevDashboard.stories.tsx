@@ -20,8 +20,8 @@ export const ComEntregas: Story = {
     await expect(canvas.getByText('Média de SP atrasados')).toBeInTheDocument()
     await expect(canvas.getByText('Média do time: 6 SP/sprint')).toBeInTheDocument()
     await expect(canvas.getByText('Story Points entregues por sprint e squad')).toBeInTheDocument()
-    await expect(canvas.getByRole('button', { name: 'Como funciona: Aderência à capacity' })).toHaveAccessibleDescription(
-      /só nas sprints em que a pessoa tem alocação/,
+    await expect(canvas.getByRole('button', { name: 'Como funciona: Entrega × previsto' })).toHaveAccessibleDescription(
+      /só nas sprints em que ela tem alocação/,
     )
     await expect(canvas.queryByText('Nenhuma entrega nas sprints selecionadas.')).not.toBeInTheDocument()
 

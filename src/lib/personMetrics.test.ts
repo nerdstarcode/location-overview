@@ -9,6 +9,7 @@ import {
   computePersonQaMetrics,
   delayInfo,
   isPersonItem,
+  loadStatusOf,
   peerAveragePerSprint,
   sizeDistribution,
 } from './personMetrics'
@@ -125,7 +126,9 @@ describe('computePersonDevMetrics', () => {
   ]
   // Só "Portal" está cadastrada: o item 1 (Backoffice) cai em "Sem squad".
   const squads = [{ id: 'sq1', name: 'Portal' }]
-  const base = { rows, sprints: [s8, s9], allocations, levels, squads, selectedSprints: [], mode: 'assigned' as const, pointTypes: POINT_TYPES }
+  // "Hoje" fixo depois das sprints de exemplo: o Bug aberto da Sprint 09 é "em andamento atrasado".
+  const today = new Date(2025, 11, 1)
+  const base = { rows, sprints: [s8, s9], allocations, levels, squads, today, selectedSprints: [], mode: 'assigned' as const, pointTypes: POINT_TYPES }
 
   it('agrupa pela sprint planejada (a da tag Delayed), separa no prazo × atrasado e por squad', () => {
     const metrics = computePersonDevMetrics({ ...base, person: ada })
@@ -134,12 +137,31 @@ describe('computePersonDevMetrics', () => {
         label: 'Sprint 08 - FY25-26',
         onTime: 5,
         delayed: 3,
+        // 10 dias válidos: previsto 10 × 1 SP/dia, máximo 10 × 1,5; com +3 dias de extensão: 13 × 1,5.
         capacity: 10,
         max: 15,
+        maxExtended: 19.5,
+        isCurrent: false,
+        inProgress: 0,
+        inProgressDelayed: 0,
         bySquad: { 'Sem squad': 5, Portal: 3 },
         byType: { 'User Story': 8 },
       },
-      { label: 'Sprint 09 - FY25-26', onTime: 0, delayed: 0, capacity: 5, max: 7.5, bySquad: {}, byType: {} },
+      {
+        label: 'Sprint 09 - FY25-26',
+        onTime: 0,
+        delayed: 0,
+        // 50%: 5 dias válidos → máximo 7,5; com extensão 6,5 dias → 9,75 ≈ 9,8.
+        capacity: 5,
+        max: 7.5,
+        maxExtended: 9.8,
+        isCurrent: false,
+        inProgress: 0,
+        // O Bug (2 SP) continua aberto depois do fim da sprint.
+        inProgressDelayed: 2,
+        bySquad: {},
+        byType: {},
+      },
     ])
     expect(metrics.squadNames).toEqual(['Sem squad', 'Portal'])
     expect(metrics).toMatchObject({
@@ -151,8 +173,10 @@ describe('computePersonDevMetrics', () => {
       itemsDelivered: 2,
       itemsOpen: 1,
       openPoints: 2,
+      inProgressDelayedPoints: 2,
       capacity: 15,
-      capacityAdherence: 53.3,
+      // Comprometido nas sprints com alocação: 8 entregues (Sprint 08) + 2 em andamento atrasado (Sprint 09).
+      capacityAdherence: 66.7,
     })
   })
 
@@ -166,11 +190,12 @@ describe('computePersonDevMetrics', () => {
     })
     const metrics = computePersonDevMetrics({ ...base, rows: [...rows, unallocated], person: ada })
     expect(metrics).toMatchObject({
+      // Os 20 SP da Sprint 10 (sem alocação) ficam fora da comparação.
       delivered: 28,
-      deliveredOnAllocatedSprints: 8,
+      deliveredOnAllocatedSprints: 10,
       allocatedSprints: 2,
       capacity: 15,
-      capacityAdherence: 53.3,
+      capacityAdherence: 66.7,
     })
   })
 
@@ -226,14 +251,72 @@ describe('computePersonDevMetrics', () => {
       iterationPath: 'Portal\\Sprint 09 - FY25-26',
     })
     const metrics = computePersonDevMetrics({ ...base, rows: [...rows, heavy], person: ada })
-    // Sprint 09: 50% de 10 dias × 1,5 SP/dia = Max 7,5; entregou 13 → conta 7,5 e sobram 5,5.
+    // Sprint 09: 50% de (10 + 3) dias × 1,5 SP/dia = Máximo 9,8; comprometido 13 + 2 em aberto = 15
+    // → conta 9,8 e sobram 5,2.
     expect(metrics).toMatchObject({
       delivered: 21,
-      deliveredOnAllocatedSprints: 15.5,
+      deliveredOnAllocatedSprints: 17.8,
       capacity: 15,
-      capacityAdherence: 103.3,
-      overloadPoints: 5.5,
+      capacityAdherence: 118.7,
+      overloadPoints: 5.2,
       overloadSprints: ['Sprint 09 - FY25-26'],
+    })
+  })
+
+  it('na sprint atual, os pontos em aberto contam como comprometidos frente ao previsto', () => {
+    const open = row({ id: 9, workItemType: 'User Story', assignedTo: ADA, storyPoints: 4, iterationPath: 'Portal\\Sprint 09 - FY25-26', state: 'Active' })
+    const during = new Date(2025, 8, 20) // 20/09/2025, dentro da Sprint 09 (15 a 26/09)
+    const metrics = computePersonDevMetrics({ ...base, rows: [...rows, open], person: ada, today: during })
+    const sprint9 = metrics.sprints.find((s) => s.label === 'Sprint 09 - FY25-26')
+    // O Bug aberto (2) + a US aberta (4) da Sprint 09.
+    expect(sprint9).toMatchObject({ isCurrent: true, inProgress: 6, onTime: 0 })
+    expect(metrics.inProgressPoints).toBe(6)
+    expect(metrics.delivered).toBe(8)
+    // Entrega + em andamento: 8 (Sprint 08) + 6 (Sprint 09, até o máximo 9,8).
+    expect(metrics.deliveredOnAllocatedSprintsRaw).toBe(14)
+
+    // Depois do fim da sprint, o que ficou aberto passa a "em andamento atrasado" (separado do atual).
+    const after = computePersonDevMetrics({ ...base, rows: [...rows, open], person: ada, today: new Date(2025, 9, 10) })
+    expect(after.sprints.find((s) => s.label === 'Sprint 09 - FY25-26')).toMatchObject({ isCurrent: false, inProgress: 0, inProgressDelayed: 6 })
+    expect(after.inProgressPoints).toBe(0)
+    expect(after.inProgressDelayedPoints).toBe(6)
+    expect(after.deliveredOnAllocatedSprintsRaw).toBe(14)
+
+    // Sprint futura: o que está aberto ainda não começou e não entra.
+    const before = computePersonDevMetrics({ ...base, rows: [...rows, open], person: ada, today: new Date(2025, 7, 1) })
+    expect(before.inProgressPoints + before.inProgressDelayedPoints).toBe(0)
+  })
+
+  it('classifica: previsto → máximo → extensão (acima do máximo) → sobrecarga', () => {
+    // previsto 10, máximo 15, máximo + extensão 19,5: ±10% em volta do previsto é "dentro".
+    expect(loadStatusOf(8.9, 10, 15, 19.5)).toBe('below')
+    expect(loadStatusOf(9, 10, 15, 19.5)).toBe('within')
+    expect(loadStatusOf(11, 10, 15, 19.5)).toBe('within')
+    expect(loadStatusOf(12, 10, 15, 19.5)).toBe('above')
+    expect(loadStatusOf(15, 10, 15, 19.5)).toBe('above')
+    expect(loadStatusOf(15.1, 10, 15, 19.5)).toBe('extension')
+    expect(loadStatusOf(19.5, 10, 15, 19.5)).toBe('extension')
+    expect(loadStatusOf(19.6, 10, 15, 19.5)).toBe('overload')
+
+    // O caso do print: 14% de alocação numa sprint de 10 dias → 1,4 dia (1,8 com a extensão).
+    const heavy = row({ id: 8, workItemType: 'User Story', assignedTo: ADA, storyPoints: 13, iterationPath: 'Portal\\Sprint 09 - FY25-26' })
+    const metrics = computePersonDevMetrics({
+      ...base,
+      rows: [heavy],
+      allocations: [{ id: 'a9', personId: 'p-ada', squadId: 'sq1', sprintId: 's9', percentage: 14 }],
+      person: ada,
+    })
+    expect(metrics).toMatchObject({
+      loadStatus: 'overload',
+      deliveredOnAllocatedSprintsRaw: 13,
+      capacity: 1.4,
+      // Máximo: 1,4 dia × 1,5; com a extensão: 1,8 dia × 1,5.
+      maxCapacity: 2.1,
+      maxExtendedCapacity: 2.7,
+      // Toda a gordurinha (2,7 − 2,1) foi usada.
+      extensionUsedPoints: 0.6,
+      extensionUsedSprints: 1,
+      sprintStatusCounts: { below: 0, within: 0, above: 0, extension: 0, overload: 1 },
     })
   })
 

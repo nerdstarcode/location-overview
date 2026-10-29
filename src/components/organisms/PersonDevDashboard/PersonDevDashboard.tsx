@@ -4,6 +4,7 @@ import type { EChartsOption } from 'echarts'
 import type { ColumnDef } from '@tanstack/react-table'
 import { ChartCard } from '../../molecules/ChartCard/ChartCard'
 import { StatCard } from '../../molecules/StatCard/StatCard'
+import { CapacityLoadCard } from '../../molecules/CapacityLoadCard/CapacityLoadCard'
 import { SegmentedControl } from '../../molecules/SegmentedControl/SegmentedControl'
 import { Checkbox } from '../../atoms/Checkbox/Checkbox'
 import { Chip } from '../../atoms/Chip/Chip'
@@ -13,11 +14,25 @@ import { round1 } from '../../../lib/numbers'
 import { CLOSED_STATES } from '../../../lib/workItems'
 import {
   DELAY_REASON_LABEL,
+  LOAD_STATUS_LABEL,
+  loadStatusOf,
   sizeDistribution,
   type DevAttribution,
   type PersonDevItem,
   type PersonDevMetrics,
 } from '../../../lib/personMetrics'
+
+const ZONE_SERIES = 'Extensão (+3 dias úteis acima do máximo)'
+const IN_PROGRESS_SERIES = 'Em andamento (sprint atual)'
+const IN_PROGRESS_DELAYED_SERIES = 'Em andamento atrasado'
+/** Mesmo tom de --color-brand-action-alert. */
+const OPEN_DELAYED_COLOR = '#ff7a00'
+
+type ChartSprint = PersonDevMetrics['sprints'][number]
+const deliveredOf = (s: ChartSprint) => round1(s.onTime + s.delayed)
+const openOf = (s: ChartSprint) => round1(s.inProgress + s.inProgressDelayed)
+/** Mesmo tom de --color-brand-action-danger: o ECharts não lê variáveis CSS. */
+const OVERLOAD_COLOR = '#e42600'
 
 const ATTRIBUTION_OPTIONS: { value: DevAttribution; label: string }[] = [
   { value: 'assigned', label: 'Assigned To' },
@@ -32,8 +47,8 @@ const INFO = {
     'SP entregues ÷ sprints em que a pessoa entregou algo (sprints sem entrega não entram). A média do time é a dos outros devs que dividem squad com ela.',
   averageDelayed:
     'SP atrasados ÷ sprints com entrega (sprint sem atraso conta 0). Atrasado = tag Delayed (conta na sprint da tag) ou fechado depois do fim da sprint planejada.',
-  adherence:
-    'SP entregues ÷ capacity × 100, só nas sprints em que a pessoa tem alocação. Em cada sprint, a entrega conta no máximo até o Max (carga cheia de 8h/dia, 40h/semana, no nível da pessoa); o excedente não aumenta a aderência e aparece como alerta de sobrecarga ou de entrega acima do nível atual. Capacity/Max = dias alocados (% × dias válidos) × points/dia do nível.',
+  load:
+    'Compara o que a pessoa entregou e tem em andamento (SP) com o previsto na Alocação, só nas sprints em que ela tem alocação. Previsto = dias válidos alocados × capacity points/dia do nível. Máximo = carga cheia (8h/dia, max points/dia) nos dias válidos. Extensão = +3 dias úteis acima do máximo (a 3ª semana, de planejamento, em que ainda se coda e testa). Conta o entregue e o que está em andamento (separados no painel). Dentro: até 10% em volta do previsto; Acima: até o máximo; Na extensão: passou do máximo, mas coube na gordurinha; Sobrecarga: passou até da extensão.',
   open: 'Itens da pessoa que ainda não estão Closed/Done nas sprints do filtro e os story points deles.',
   mix: 'Tipo de item com mais SP entregues; abaixo, os SP entregues por tipo (User Story, Bug, Enabler).',
 }
@@ -55,8 +70,31 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
   const option: EChartsOption = useMemo(
     () =>
       chart.baseOption({
-        tooltip: { trigger: 'axis' },
-        legend: { top: 0, textStyle: chart.textStyle },
+        tooltip: {
+          trigger: 'axis',
+          // Sem a série da zona (o valor dela é a diferença Máximo − Previsto) e com a situação da sprint.
+          formatter: (raw: unknown) => {
+            const params = (Array.isArray(raw) ? raw : [raw]) as {
+              seriesName: string
+              marker: string
+              value: number | null
+              dataIndex: number
+              axisValueLabel: string
+            }[]
+            const sprint = sprints[params[0]?.dataIndex ?? 0]
+            if (!sprint) return ''
+            const total = round1(deliveredOf(sprint) + openOf(sprint))
+            const lines = params
+              .filter((p) => p.seriesName !== ZONE_SERIES && p.value !== null && p.value !== undefined)
+              .filter((p) => !([IN_PROGRESS_SERIES, IN_PROGRESS_DELAYED_SERIES].includes(p.seriesName) && !p.value))
+              .map((p) => `${p.marker} ${p.seriesName}: ${p.value}`)
+            lines.push(`<b>Entregue: ${deliveredOf(sprint)}</b>`)
+            if (openOf(sprint) > 0) lines.push(`<b>Em aberto: ${openOf(sprint)}</b> (comprometido: ${total})`)
+            if (sprint.capacity > 0) lines.push(`Situação: ${LOAD_STATUS_LABEL[loadStatusOf(total, sprint.capacity, sprint.max, sprint.maxExtended)]}`)
+            return [params[0].axisValueLabel, ...lines].join('<br/>')
+          },
+        },
+        legend: { top: 0, type: 'scroll', textStyle: chart.textStyle },
         xAxis: chart.sprintAxis(sprints.map((s) => s.label)),
         yAxis: chart.valueAxis(),
         series: [
@@ -76,6 +114,34 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
             },
           },
           {
+            // Só a sprint atual tem valor: itens em aberto que ainda serão entregues.
+            name: IN_PROGRESS_SERIES,
+            type: 'bar',
+            stack: 'delivered',
+            data: sprints.map((s) => s.inProgress),
+            itemStyle: {
+              color: chart.palette[0],
+              opacity: 0.4,
+              ...chart.paletteBorder,
+              decal: { symbol: 'circle', symbolSize: 0.6, dashArrayX: [6, 0], dashArrayY: [3, 3] },
+            },
+            barMaxWidth: 40,
+          },
+          {
+            // Sprints já encerradas: itens que continuam abertos.
+            name: IN_PROGRESS_DELAYED_SERIES,
+            type: 'bar',
+            stack: 'delivered',
+            data: sprints.map((s) => s.inProgressDelayed),
+            itemStyle: {
+              color: OPEN_DELAYED_COLOR,
+              opacity: 0.5,
+              ...chart.paletteBorder,
+              decal: { symbol: 'circle', symbolSize: 0.6, dashArrayX: [6, 0], dashArrayY: [3, 3] },
+            },
+            barMaxWidth: 40,
+          },
+          {
             name: 'Atrasados',
             type: 'bar',
             stack: 'delivered',
@@ -86,20 +152,25 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
               decal: { symbol: 'line', dashArrayX: [4, 2], rotation: Math.PI / 4 },
             },
             barMaxWidth: 40,
-            // Última série da pilha: o rótulo no topo mostra o total entregue na sprint.
+            // Última série da pilha: o rótulo no topo mostra o total entregue na sprint, com ⚠
+            // em vermelho quando passou até da extensão (sobrecarga ou entrega acima do nível).
             label: {
               show: true,
               position: 'top',
               color: chart.theme.textH,
               fontWeight: 'bold',
               formatter: ({ dataIndex }: { dataIndex: number }) => {
-                const total = round1(sprints[dataIndex].onTime + sprints[dataIndex].delayed)
-                return total > 0 ? String(total) : ''
+                const sprint = sprints[dataIndex]
+                const total = round1(deliveredOf(sprint) + openOf(sprint))
+                if (total <= 0) return ''
+                const text = openOf(sprint) > 0 ? `${deliveredOf(sprint)} + ${openOf(sprint)}` : String(total)
+                return sprint.capacity > 0 && total > sprint.maxExtended ? `{overload|⚠ ${text}}` : text
               },
+              rich: { overload: { color: OVERLOAD_COLOR, fontWeight: 'bold' } },
             },
           },
           {
-            name: 'Capacity (Alocação)',
+            name: 'Previsto (Alocação)',
             type: 'line',
             // null = sem alocação na sprint: sem ponto, em vez de puxar a linha para 0.
             data: sprints.map((s) => (s.capacity > 0 ? s.capacity : null)),
@@ -107,12 +178,24 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
             symbol: 'circle',
           },
           {
-            name: 'Max (Alocação)',
+            name: 'Máximo (Alocação)',
             type: 'line',
+            stack: 'zone',
             data: sprints.map((s) => (s.max > 0 ? s.max : null)),
             itemStyle: { color: chart.palette[4] },
             lineStyle: { type: 'dashed' },
             symbol: 'triangle',
+          },
+          {
+            // Empilhada sobre o Máximo: a área vai do Máximo até o fim da extensão de +3 dias úteis.
+            name: ZONE_SERIES,
+            type: 'line',
+            stack: 'zone',
+            data: sprints.map((s) => (s.max > 0 ? round1(Math.max(0, s.maxExtended - s.max)) : null)),
+            itemStyle: { color: chart.palette[4] },
+            lineStyle: { width: 0 },
+            areaStyle: { color: chart.palette[4], opacity: 0.18 },
+            symbol: 'none',
           },
         ],
       }),
@@ -246,14 +329,6 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
   )
 
   const tableItems = onlyDelayed ? metrics.items.filter((item) => item.delay.delayed) : metrics.items
-  const capacityHint =
-    metrics.allocatedSprints > 0
-      ? `${metrics.deliveredOnAllocatedSprints} de ${metrics.capacity} SP de capacity · ${metrics.allocatedSprints} sprint(s) com alocação`
-      : 'Sem alocação nas sprints'
-  const overloadAlert =
-    metrics.overloadSprints.length > 0
-      ? `${metrics.overloadPoints} SP acima do Max em ${metrics.overloadSprints.length} sprint(s) — sobrecarga ou acima do nível`
-      : undefined
   const comparison = peerAverage > 0 ? `Média do time: ${peerAverage} SP/sprint` : 'Sem outros devs para comparar'
 
   return (
@@ -267,7 +342,10 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
         <SegmentedControl aria-label="Atribuição dos pontos" options={ATTRIBUTION_OPTIONS} value={mode} onChange={onModeChange} />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <CapacityLoadCard label="Entrega × previsto" info={INFO.load} unit="SP" load={metrics} />
+
+      {/* 5 cards: 1/2/3 colunas e uma linha só em telas largas. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard label="SP entregues" info={INFO.delivered} value={metrics.delivered} hint={`${metrics.itemsDelivered} item(ns) fechados`} />
         <StatCard label="Média de entrega" info={INFO.average} value={`${metrics.averagePerSprint} SP/sprint`} hint={comparison} />
         <StatCard
@@ -275,13 +353,6 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
           info={INFO.averageDelayed}
           value={`${metrics.averageDelayedPerSprint} SP/sprint`}
           hint={`${metrics.delayedPoints} SP atrasados · ${metrics.delayedPercent}% do entregue`}
-        />
-        <StatCard
-          label="Aderência à capacity"
-          info={INFO.adherence}
-          value={metrics.capacityAdherence === null ? '—' : `${metrics.capacityAdherence}%`}
-          hint={capacityHint}
-          alert={overloadAlert}
         />
         <StatCard label="Em aberto" info={INFO.open} value={`${metrics.openPoints} SP`} hint={`${metrics.itemsOpen} item(ns) não fechados`} />
         <StatCard
@@ -294,7 +365,7 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
 
       <ChartCard
         title="Story Points entregues por sprint"
-        description="Pela coluna Sprint, como no Dashboard por Squad: itens com tag Delayed contam como atrasados na sprint da tag (a planejada). Linhas: capacity/max da pessoa na Alocação."
+        description="Pela coluna Sprint (com tag Delayed, a sprint da tag). Linha cheia: previsto; tracejada: máximo; a faixa sombreada logo acima do máximo é a extensão de +3 dias úteis. Total com ⚠ = acima até da extensão."
         isEmpty={sprints.length === 0}
         emptyMessage="Nenhuma entrega ou alocação nas sprints selecionadas."
       >

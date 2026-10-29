@@ -47,3 +47,10 @@ export function addDays(date: Date, days: number): Date {
   next.setUTCDate(next.getUTCDate() + days)
   return next
 }
+
+/** "yyyy-mm-dd" da data no fuso local (toISOString usaria UTC e viraria o dia à noite no Brasil). */
+export function localDateKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}

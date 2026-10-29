@@ -1,4 +1,4 @@
-import { toDateKey } from './dates'
+import { localDateKey, toDateKey } from './dates'
 import { round1, percentOf } from './numbers'
 import type { CargoConfig, CargoTipo } from './cargosStorage'
 import type { LevelConfig } from './levelsStorage'
@@ -160,20 +160,42 @@ function squadSelected(squadName: string, selectedSquads: string[] | undefined):
   return !selectedSquads || selectedSquads.length === 0 || selectedSquads.includes(squadName)
 }
 
-function capacityBySprint(input: PersonMetricsInput): Map<string, { capacity: number; max: number }> {
+/**
+ * A sprint tem 3 semanas, mas só 2 (os dias válidos) entram no previsto: a 3ª é tomada por
+ * reuniões de planejamento, embora o time continue codando e testando. Essa "gordurinha" são
+ * +3 dias úteis acima do Máximo, proporcionais à alocação, usáveis antes da próxima sprint.
+ */
+export const SPRINT_EXTENSION_DAYS = 3
+
+/**
+ * Previsto (capacity points/dia nos dias válidos), Máximo (carga cheia de 8h/dia — max points/dia
+ * — nos dias válidos) e Máximo com a extensão (a carga cheia somando os dias de extensão).
+ */
+export interface SprintCapacity {
+  capacity: number
+  max: number
+  maxExtended: number
+}
+
+function capacityBySprint(input: PersonMetricsInput): Map<string, SprintCapacity> {
   const { person, allocations, sprints, levels } = input
   const sprintsById = new Map(sprints.map((s) => [s.id, s]))
   const squadsById = new Map((input.squads ?? []).map((s) => [s.id, s.name]))
-  const result = new Map<string, { capacity: number; max: number }>()
+  const result = new Map<string, SprintCapacity>()
   for (const entry of allocations) {
     if (entry.personId !== person.id) continue
     if (!squadSelected(squadsById.get(entry.squadId) ?? NO_SQUAD_LABEL, input.selectedSquads)) continue
     const sprint = sprintsById.get(entry.sprintId)
     if (!sprint) continue
     const { capacity, max } = pointsForEntry(entry, sprint, person, levels)
+    const extended = pointsForEntry(entry, { totalValidDays: sprint.totalValidDays + SPRINT_EXTENSION_DAYS }, person, levels)
     const label = formatSprintLabel(sprint)
-    const acc = result.get(label) ?? { capacity: 0, max: 0 }
-    result.set(label, { capacity: acc.capacity + capacity, max: acc.max + max })
+    const acc = result.get(label) ?? { capacity: 0, max: 0, maxExtended: 0 }
+    result.set(label, {
+      capacity: acc.capacity + capacity,
+      max: acc.max + max,
+      maxExtended: acc.maxExtended + extended.max,
+    })
   }
   return result
 }
@@ -189,26 +211,84 @@ function averageOfActive(values: number[]): number {
 
 /**
  * Aderência conservadora, só nas sprints com alocação (sem alocação não há com o que comparar):
- * em cada sprint a entrega conta no máximo até o Max — a carga cheia de 8h/dia (40h/semana)
- * no nível da pessoa. O que passa do Max não infla a aderência; vira `overload`, sinal de
- * sobrecarga ou de que a pessoa entrega acima do nível cadastrado.
+ * em cada sprint a carga conta no máximo até o Máximo com a extensão. O que passa disso não infla
+ * a aderência; vira `overload`, sinal de sobrecarga ou de entrega acima do nível cadastrado.
  */
-function allocationAdherence<T extends { label: string; capacity: number; max: number }>(
+function allocationAdherence<T extends { label: string; capacity: number; max: number; maxExtended: number }>(
   sprints: T[],
   deliveredOf: (sprint: T) => number,
 ) {
   const allocated = sprints.filter((sprint) => sprint.capacity > 0)
-  const capacity = allocated.reduce((total, sprint) => total + sprint.capacity, 0)
-  const counted = allocated.reduce((total, sprint) => total + Math.min(deliveredOf(sprint), sprint.max), 0)
-  const overloaded = allocated.filter((sprint) => deliveredOf(sprint) > sprint.max)
+  const sum = (pick: (sprint: T) => number) => allocated.reduce((total, sprint) => total + pick(sprint), 0)
+  const capacity = sum((sprint) => sprint.capacity)
+  const max = sum((sprint) => sprint.max)
+  const maxExtended = sum((sprint) => sprint.maxExtended)
+  const delivered = sum(deliveredOf)
+  const counted = sum((sprint) => Math.min(deliveredOf(sprint), sprint.maxExtended))
+  const overloaded = allocated.filter((sprint) => deliveredOf(sprint) > sprint.maxExtended)
+  // Quanto da gordurinha foi usado: o que passou do Máximo, até o Máximo com a extensão.
+  const extensionUsed = allocated.map((sprint) => Math.max(0, Math.min(deliveredOf(sprint), sprint.maxExtended) - sprint.max))
+  const sprintStatusCounts: Record<LoadStatus, number> = { below: 0, within: 0, above: 0, extension: 0, overload: 0 }
+  for (const sprint of allocated) {
+    sprintStatusCounts[loadStatusOf(deliveredOf(sprint), sprint.capacity, sprint.max, sprint.maxExtended)] += 1
+  }
   return {
     capacity: round1(capacity),
+    maxCapacity: round1(max),
+    maxExtendedCapacity: round1(maxExtended),
+    extensionUsedPoints: round1(extensionUsed.reduce((total, value) => total + value, 0)),
+    extensionUsedSprints: extensionUsed.filter((value) => value > 0).length,
+    sprintStatusCounts,
+    deliveredOnAllocatedSprintsRaw: round1(delivered),
     deliveredOnAllocatedSprints: round1(counted),
     allocatedSprints: allocated.length,
     capacityAdherence: capacity > 0 ? percentOf(counted, capacity) : null,
-    overloadPoints: round1(overloaded.reduce((total, sprint) => total + deliveredOf(sprint) - sprint.max, 0)),
+    loadStatus: capacity > 0 ? loadStatusOf(delivered, capacity, max, maxExtended) : null,
+    overloadPoints: round1(overloaded.reduce((total, sprint) => total + deliveredOf(sprint) - sprint.maxExtended, 0)),
     overloadSprints: overloaded.map((sprint) => sprint.label),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Status da entrega em relação ao previsto (Alocação)
+
+/** Situação da carga frente ao Previsto, ao Máximo e à extensão acima do Máximo. */
+export type LoadStatus = 'below' | 'within' | 'above' | 'extension' | 'overload'
+
+export const LOAD_STATUS_LABEL: Record<LoadStatus, string> = {
+  below: 'Abaixo do previsto',
+  within: 'Dentro do previsto',
+  above: 'Acima do previsto',
+  extension: 'Na extensão',
+  overload: 'Sobrecarga',
+}
+
+/** Folga em torno do Capacity que ainda conta como "dentro do previsto" (±10%). */
+const WITHIN_TOLERANCE = 0.1
+
+/**
+ * Abaixo: menos de 90% do previsto. Dentro: até 10% em volta do previsto. Acima: além disso,
+ * até o Máximo. Na extensão: passou do Máximo, mas cabe nos +3 dias úteis de extensão (a
+ * gordurinha). Sobrecarga: passou até da extensão — sobrecarga ou entrega acima do nível.
+ */
+export function loadStatusOf(delivered: number, capacity: number, max: number, maxExtended: number): LoadStatus {
+  if (delivered > maxExtended) return 'overload'
+  if (delivered < capacity * (1 - WITHIN_TOLERANCE)) return 'below'
+  if (delivered <= capacity * (1 + WITHIN_TOLERANCE)) return 'within'
+  if (delivered <= max) return 'above'
+  return 'extension'
+}
+
+/** Sprints em andamento (hoje, no fuso local, entre o início e o fim) e as já encerradas. */
+function sprintTimeline(input: PersonMetricsInput): { current: Set<string>; past: Set<string> } {
+  const today = localDateKey(input.today ?? new Date())
+  const current = new Set<string>()
+  const past = new Set<string>()
+  for (const sprint of input.sprints) {
+    if (sprint.startDate <= today && today <= sprint.endDate) current.add(formatSprintLabel(sprint))
+    else if (sprint.endDate && sprint.endDate < today) past.add(formatSprintLabel(sprint))
+  }
+  return { current, past }
 }
 
 function roundValues(record: Record<string, number>): Record<string, number> {
@@ -244,6 +324,8 @@ export interface PersonMetricsInput {
   selectedFiscalYears?: string[]
   /** Só as sprints em que a pessoa tem alocação (respeitando o filtro de squad). */
   onlyAllocatedSprints?: boolean
+  /** "Hoje", para saber qual é a sprint atual (padrão: agora). */
+  today?: Date
   /** Squads da base, para separar as entregas por squad (pelo Iteration Path). */
   squads?: Squad[]
   /**
@@ -264,11 +346,20 @@ export interface PersonDevSprint {
   onTime: number
   delayed: number
   capacity: number
+  /** Carga cheia (max points/dia) nos dias válidos. */
   max: number
+  /** Carga cheia somando os SPRINT_EXTENSION_DAYS dias úteis de extensão (acima do Máximo). */
+  maxExtended: number
   /** SP entregues por squad nesta sprint. */
   bySquad: Record<string, number>
   /** SP entregues por Work Item Type nesta sprint. */
   byType: Record<string, number>
+  /** Sprint em andamento (hoje entre o início e o fim). */
+  isCurrent: boolean
+  /** Sprint atual: SP dos itens ainda abertos (comprometidos frente ao previsto). */
+  inProgress: number
+  /** Sprint já encerrada: SP dos itens que continuam abertos (em andamento atrasado). */
+  inProgressDelayed: number
 }
 
 export interface PersonDevMetrics {
@@ -278,6 +369,14 @@ export interface PersonDevMetrics {
   items: PersonDevItem[]
   delivered: number
   delayedPoints: number
+  /** SP em aberto na sprint atual (somados à entrega na comparação com o previsto). */
+  inProgressPoints: number
+  /** Parte de inProgressPoints nas sprints com alocação (incluída em deliveredOnAllocatedSprintsRaw). */
+  inProgressOnAllocatedSprints: number
+  /** SP ainda abertos em sprints já encerradas (em andamento atrasado). */
+  inProgressDelayedPoints: number
+  /** Parte de inProgressDelayedPoints nas sprints com alocação (incluída em deliveredOnAllocatedSprintsRaw). */
+  inProgressDelayedOnAllocatedSprints: number
   averagePerSprint: number
   averageDelayedPerSprint: number
   delayedPercent: number
@@ -294,6 +393,19 @@ export interface PersonDevMetrics {
   /** SP entregues acima do Max nas sprints com alocação: sobrecarga ou acima do nível atual. */
   overloadPoints: number
   overloadSprints: string[]
+  /** Soma do Máximo (carga cheia nos dias válidos) nas sprints com alocação. */
+  maxCapacity: number
+  /** Soma do Máximo com a extensão (+3 dias úteis) nas sprints com alocação. */
+  maxExtendedCapacity: number
+  /** Carga acima do Máximo que coube na extensão (gordurinha usada) e em quantas sprints. */
+  extensionUsedPoints: number
+  extensionUsedSprints: number
+  /** Quantas sprints com alocação caíram em cada situação. */
+  sprintStatusCounts: Record<LoadStatus, number>
+  /** Entrega real (sem limite) nas sprints com alocação, para comparar com Capacity e Max. */
+  deliveredOnAllocatedSprintsRaw: number
+  /** Situação da entrega nas sprints com alocação; null sem alocação. */
+  loadStatus: LoadStatus | null
   byType: { type: string; points: number }[]
 }
 
@@ -310,15 +422,24 @@ export function computePersonDevMetrics(
 
   const bySprint = new Map<string, PersonDevSprint>()
   const sprintEntry = (label: string) => {
-    const entry = bySprint.get(label) ?? { label, onTime: 0, delayed: 0, capacity: 0, max: 0, bySquad: {}, byType: {} }
+    const entry = bySprint.get(label) ?? { label, onTime: 0, delayed: 0, capacity: 0, max: 0, maxExtended: 0, bySquad: {}, byType: {}, isCurrent: false, inProgress: 0, inProgressDelayed: 0 }
     bySprint.set(label, entry)
     return entry
   }
-  for (const [label, { capacity: cap, max }] of capacity) {
+  for (const [label, sprintCapacity] of capacity) {
     if (!inSprint(label)) continue
-    Object.assign(sprintEntry(label), { capacity: cap, max })
+    Object.assign(sprintEntry(label), sprintCapacity)
   }
   const closed = items.filter((item) => isClosed(item.row))
+  // Na sprint atual o que está em aberto ainda vai ser entregue: conta como comprometido.
+  const { current: currentSprints, past: pastSprints } = sprintTimeline(input)
+  for (const item of items) {
+    const label = plannedSprintLabel(item.row)
+    if (isClosed(item.row)) continue
+    // Em sprint futura o item ainda não começou: não entra.
+    if (currentSprints.has(label)) sprintEntry(label).inProgress += item.points
+    else if (pastSprints.has(label)) sprintEntry(label).inProgressDelayed += item.points
+  }
   const totalBySquad = new Map<string, number>()
   for (const item of closed) {
     const label = plannedSprintLabel(item.row)
@@ -338,6 +459,10 @@ export function computePersonDevMetrics(
       delayed: round1(s.delayed),
       capacity: round1(s.capacity),
       max: round1(s.max),
+      maxExtended: round1(s.maxExtended),
+      isCurrent: currentSprints.has(s.label),
+      inProgress: round1(s.inProgress),
+      inProgressDelayed: round1(s.inProgressDelayed),
       bySquad: roundValues(s.bySquad),
       byType: roundValues(s.byType),
     }))
@@ -363,7 +488,14 @@ export function computePersonDevMetrics(
     itemsDelivered: closed.length,
     itemsOpen: open.length,
     openPoints: round1(open.reduce((sum, item) => sum + item.points, 0)),
-    ...allocationAdherence(sprints, (s) => s.onTime + s.delayed),
+    inProgressPoints: round1(sprints.reduce((sum, s) => sum + s.inProgress, 0)),
+    inProgressOnAllocatedSprints: round1(sprints.filter((s) => s.capacity > 0).reduce((sum, s) => sum + s.inProgress, 0)),
+    inProgressDelayedPoints: round1(sprints.reduce((sum, s) => sum + s.inProgressDelayed, 0)),
+    inProgressDelayedOnAllocatedSprints: round1(
+      sprints.filter((s) => s.capacity > 0).reduce((sum, s) => sum + s.inProgressDelayed, 0),
+    ),
+    // Carga comprometida: entregue + em andamento (atual e atrasado), sempre exibidos separados.
+    ...allocationAdherence(sprints, (s) => s.onTime + s.delayed + s.inProgress + s.inProgressDelayed),
     byType: [...byType.entries()].map(([type, points]) => ({ type, points: round1(points) })).sort((a, b) => b.points - a.points),
   }
 }
@@ -390,7 +522,10 @@ export interface PersonQaSprint {
   /** Pontos de Execução dos Test Cases atribuídos, já na escala de story points (÷36). */
   executionPoints: number
   capacity: number
+  /** Carga cheia (max points/dia) nos dias válidos. */
   max: number
+  /** Carga cheia somando os SPRINT_EXTENSION_DAYS dias úteis de extensão (acima do Máximo). */
+  maxExtended: number
   /** Testes executados por squad nesta sprint. */
   bySquad: Record<string, number>
 }
@@ -425,6 +560,19 @@ export interface PersonQaMetrics {
   /** Pontos de Execução acima do Max nas sprints com alocação: sobrecarga ou acima do nível atual. */
   overloadPoints: number
   overloadSprints: string[]
+  /** Soma do Máximo (carga cheia nos dias válidos) nas sprints com alocação. */
+  maxCapacity: number
+  /** Soma do Máximo com a extensão (+3 dias úteis) nas sprints com alocação. */
+  maxExtendedCapacity: number
+  /** Carga acima do Máximo que coube na extensão (gordurinha usada) e em quantas sprints. */
+  extensionUsedPoints: number
+  extensionUsedSprints: number
+  /** Quantas sprints com alocação caíram em cada situação. */
+  sprintStatusCounts: Record<LoadStatus, number>
+  /** Pontos de Execução reais (sem limite) nas sprints com alocação. */
+  deliveredOnAllocatedSprintsRaw: number
+  /** Situação da entrega nas sprints com alocação; null sem alocação. */
+  loadStatus: LoadStatus | null
   /** false quando nenhuma sincronização trouxe test results desta pessoa. */
   hasExecutions: boolean
 }
@@ -439,12 +587,12 @@ export function computePersonQaMetrics(input: PersonMetricsInput & { executions:
   const bySprint = new Map<string, PersonQaSprint>()
   const sprintEntry = (label: string) => {
     const entry =
-      bySprint.get(label) ?? { label, executed: 0, passed: 0, failed: 0, other: 0, executionPoints: 0, capacity: 0, max: 0, bySquad: {} }
+      bySprint.get(label) ?? { label, executed: 0, passed: 0, failed: 0, other: 0, executionPoints: 0, capacity: 0, max: 0, maxExtended: 0, bySquad: {} }
     bySprint.set(label, entry)
     return entry
   }
-  for (const [label, { capacity: cap, max }] of capacity) {
-    if (inSprint(label)) Object.assign(sprintEntry(label), { capacity: cap, max })
+  for (const [label, sprintCapacity] of capacity) {
+    if (inSprint(label)) Object.assign(sprintEntry(label), sprintCapacity)
   }
 
   const executions = input.executions.filter(
@@ -483,7 +631,7 @@ export function computePersonQaMetrics(input: PersonMetricsInput & { executions:
   }
 
   const sprints = [...bySprint.values()]
-    .map((s) => ({ ...s, executionPoints: round1(s.executionPoints), capacity: round1(s.capacity), max: round1(s.max) }))
+    .map((s) => ({ ...s, executionPoints: round1(s.executionPoints), capacity: round1(s.capacity), max: round1(s.max), maxExtended: round1(s.maxExtended) }))
     .sort((a, b) => compareSprintLabels(a.label, b.label))
   const sum = (pick: (s: PersonQaSprint) => number) => sprints.reduce((total, s) => total + pick(s), 0)
   const executed = sum((s) => s.executed)

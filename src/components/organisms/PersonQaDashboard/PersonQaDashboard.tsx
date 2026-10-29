@@ -4,6 +4,7 @@ import type { EChartsOption } from 'echarts'
 import type { ColumnDef } from '@tanstack/react-table'
 import { ChartCard } from '../../molecules/ChartCard/ChartCard'
 import { StatCard } from '../../molecules/StatCard/StatCard'
+import { CapacityLoadCard } from '../../molecules/CapacityLoadCard/CapacityLoadCard'
 import { Chip } from '../../atoms/Chip/Chip'
 import { DataTable } from '../DataTable/DataTable'
 import { useChartTheme } from '../../../hooks/useChartTheme'
@@ -16,8 +17,8 @@ const INFO = {
     'Resultados de teste executados pela pessoa (quem rodou, no Azure), trazidos ao sincronizar as sprints. Resultados não executados (Not Executed, In Progress…) não contam.',
   average: 'Testes executados ÷ sprints em que a pessoa executou algum teste.',
   passed: 'Passed ÷ executados × 100. Abaixo, o % de failed (Failed, Error, Timeout e Aborted).',
-  adherence:
-    'Pontos de Execução ÷ capacity × 100, só nas sprints em que a pessoa tem alocação. Em cada sprint, a entrega conta no máximo até o Max (carga cheia de 8h/dia, 40h/semana, no nível da pessoa); o excedente não aumenta a aderência e aparece como alerta de sobrecarga ou de entrega acima do nível atual. Capacity/Max = dias alocados (% × dias válidos) × points/dia do nível.',
+  load:
+    'Compara os Pontos de Execução da pessoa com o previsto na Alocação, só nas sprints em que ela tem alocação. Previsto = dias válidos alocados × capacity points/dia do nível. Máximo = carga cheia (8h/dia, max points/dia) nos dias válidos. Extensão = +3 dias úteis acima do máximo (a 3ª semana, de planejamento, em que ainda se coda e testa). Conta o entregue e o que está em andamento (separados no painel). Dentro: até 10% em volta do previsto; Acima: até o máximo; Na extensão: passou do máximo, mas coube na gordurinha; Sobrecarga: passou até da extensão.',
   executionPoints:
     'Ponto de execução × runs ÷ 36 dos Test Cases atribuídos à pessoa (36 PE = 1 SP). A média ignora sprints sem PE.',
   testCases: 'Quantidade de Test Cases e Test Plans com a pessoa no Assigned To, nas sprints do filtro.',
@@ -171,25 +172,13 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <CapacityLoadCard label="Entrega × previsto" info={INFO.load} unit="PE" load={metrics} />
+
+      {/* 5 cards: 1/2/3 colunas e uma linha só em telas largas. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard label="Testes executados" info={INFO.executed} value={metrics.executed} hint={executionsHint} />
         <StatCard label="Média de execução" info={INFO.average} value={`${metrics.averageExecutedPerSprint} testes/sprint`} hint="Sprints com execução" />
         <StatCard label="% Passed" info={INFO.passed} value={`${metrics.passedPercent}%`} hint={`${metrics.failedPercent}% failed`} />
-        <StatCard
-          label="Aderência à capacity"
-          info={INFO.adherence}
-          value={metrics.capacityAdherence === null ? '—' : `${metrics.capacityAdherence}%`}
-          hint={
-            metrics.allocatedSprints > 0
-              ? `${metrics.deliveredOnAllocatedSprints} de ${metrics.capacity} SP de capacity · ${metrics.allocatedSprints} sprint(s) com alocação`
-              : 'Sem alocação nas sprints'
-          }
-          alert={
-            metrics.overloadSprints.length > 0
-              ? `${metrics.overloadPoints} PE acima do Max em ${metrics.overloadSprints.length} sprint(s) — sobrecarga ou acima do nível`
-              : undefined
-          }
-        />
         <StatCard label="Pontos de Execução" info={INFO.executionPoints} value={`${metrics.executionPoints} SP`} hint={`Média ${metrics.averageExecutionPointsPerSprint} SP/sprint`} />
         <StatCard label="Test Cases atribuídos" info={INFO.testCases} value={metrics.testCases} hint="Test Case / Test Plan com a pessoa no Assigned To" />
       </div>
