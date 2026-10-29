@@ -9,6 +9,7 @@ import { useAzureConfig } from '../../contexts/azure/AzureConfigContext'
 import type { CargoTipo } from '../../lib/cargosStorage'
 import type { Person } from '../../lib/peopleStorage'
 import { computePersonDevMetrics, computePersonQaMetrics, peerAveragePerSprint, type DelayInfo } from '../../lib/personMetrics'
+import { canShowQaPersonMetrics } from '../../lib/featureFlags'
 import type { WorkItemRow } from '../../lib/workItems'
 import { loadPersonDashboardBase, usePersonDashboardFilters } from './personDashboardBase'
 import { PersonDashboardFilterBar } from './PersonDashboardFilterBar'
@@ -34,8 +35,11 @@ export function PersonDashboardPage() {
 
   const person = base.people.find((p) => p.id === personId)
   const tipoOf = (p: Person): CargoTipo | undefined => base.cargos.find((c) => c.cargo === p.cargo)?.tipo
-  const defaultRole: Role = person && tipoOf(person) === 'QA' ? 'qa' : 'dev'
-  const role = roleOverride && roleOverride.personId === person?.id ? roleOverride.role : defaultRole
+  const isQaPerson = person !== undefined && tipoOf(person) === 'QA'
+  // Fora de localhost a visão QA não existe: fica sempre em Dev.
+  const qaEnabled = canShowQaPersonMetrics()
+  const defaultRole: Role = qaEnabled && isQaPerson ? 'qa' : 'dev'
+  const role = qaEnabled && roleOverride && roleOverride.personId === person?.id ? roleOverride.role : defaultRole
 
   const metricsInput = person && { ...base, person, ...metricsFilters }
 
@@ -88,18 +92,24 @@ export function PersonDashboardPage() {
           </label>
         }
         trailing={
-          <>
-            {person && (
-              <SegmentedControl
-                aria-label="Visão"
-                options={ROLE_OPTIONS}
-                value={role}
-                onChange={(next) => setRoleOverride({ personId: person.id, role: next })}
-              />
-            )}
-          </>
+          person &&
+          qaEnabled && (
+            <SegmentedControl
+              aria-label="Visão"
+              options={ROLE_OPTIONS}
+              value={role}
+              onChange={(next) => setRoleOverride({ personId: person.id, role: next })}
+            />
+          )
         }
       />
+
+      {isQaPerson && !qaEnabled && (
+        <p role="status" className="rounded-md border border-[var(--border)] bg-[var(--code-bg)] p-3 text-sm text-[var(--text-h)]">
+          As métricas individuais de QA (testes executados) ainda estão em validação e não estão disponíveis aqui. Abaixo,
+          a visão de story points.
+        </p>
+      )}
 
       {!person && (
         <p className="rounded-md border border-[var(--border)] p-10 text-center text-sm text-[var(--text)]">
