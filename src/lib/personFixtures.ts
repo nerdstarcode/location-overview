@@ -1,7 +1,8 @@
 // Dados de exemplo do Dashboard por Pessoa (Storybook): a sprint de exemplo + um item
 // entregue com atraso na sprint seguinte e os testes executados pela QA.
 import { DEFAULT_LEVELS } from './levelsStorage'
-import { computePersonDevMetrics, computePersonQaMetrics, delayInfo } from './personMetrics'
+import type { CargoConfig } from './cargosStorage'
+import { computePeopleSummary, computePersonDevMetrics, computePersonQaMetrics, delayInfo } from './personMetrics'
 import { formatSprintLabel, type Sprint } from './sprintsStorage'
 import type { TestExecution } from './testExecutionsStorage'
 import type { WorkItemRow } from './workItems'
@@ -67,3 +68,18 @@ export const PERSON_FIXTURE_DEV_METRICS = computePersonDevMetrics({
 })
 
 export const PERSON_FIXTURE_QA_METRICS = computePersonQaMetrics({ ...base, person: FIXTURE_PEOPLE[2], executions: EXECUTIONS })
+
+const CARGOS: CargoConfig[] = [
+  { id: 'c1', cargo: 'Sr Software Developer', tipo: 'Dev', nivel: 'SR' },
+  { id: 'c2', cargo: 'Software Developer', tipo: 'Dev', nivel: 'PL' },
+  { id: 'c3', cargo: 'Sr Software Tester Quality', tipo: 'QA', nivel: 'SR' },
+]
+
+export const PERSON_FIXTURE_SUMMARY = computePeopleSummary({
+  ...base,
+  people: FIXTURE_PEOPLE,
+  cargos: CARGOS,
+  executions: EXECUTIONS,
+  mode: 'assigned',
+  pointTypes: FIXTURE_POINT_TYPES,
+})

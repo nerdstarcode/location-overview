@@ -7,6 +7,7 @@ import { LevelsPage } from './pages/LevelsPage'
 import { PeoplePage } from './pages/PeoplePage'
 import { SquadsPage } from './pages/SquadsPage'
 import { WorkItemsPage } from './pages/WorkItemsPage'
+import { PeopleSummaryPage } from './pages/dashboard/PeopleSummaryPage'
 import { PersonDashboardPage } from './pages/dashboard/PersonDashboardPage'
 import { SquadDashboardPage } from './pages/dashboard/SquadDashboardPage'
 import { AzureSettingsPage } from './pages/azure/AzureSettingsPage'
@@ -28,6 +29,7 @@ function App() {
             <Route index element={<Navigate to="squad" replace />} />
             <Route path="squad" element={<SquadDashboardPage />} />
             <Route path="pessoa/:personId?" element={<PersonDashboardPage />} />
+            <Route path="pessoas" element={<PeopleSummaryPage />} />
           </Route>
           <Route path="pessoas" element={<PeoplePage />} />
           <Route path="squads" element={<SquadsPage />} />
