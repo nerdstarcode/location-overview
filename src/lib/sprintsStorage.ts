@@ -1,3 +1,4 @@
+import { localDateKey } from './dates'
 import { readList, writeJson } from './localStore'
 
 export interface Sprint {
@@ -23,6 +24,18 @@ export function isValidFiscalYear(value: string): boolean {
 /** "Sprint 08 - FY25-26", no mesmo formato normalizado de parseSprintInfo. */
 export function formatSprintLabel(sprint: Pick<Sprint, 'number' | 'fiscalYear'>): string {
   return `Sprint ${String(sprint.number).padStart(2, '0')} - ${sprint.fiscalYear.toUpperCase()}`
+}
+
+/** Situação da sprint em relação a hoje (fuso local): já fechou, está em andamento ou ainda não começou. */
+export type SprintPhase = 'closed' | 'current' | 'open'
+
+export const SPRINT_PHASE_LABEL: Record<SprintPhase, string> = { closed: 'Fechada', current: 'Atual', open: 'Aberta' }
+
+export function sprintPhase(sprint: Pick<Sprint, 'startDate' | 'endDate'>, today: Date = new Date()): SprintPhase {
+  const key = localDateKey(today)
+  if (sprint.endDate && sprint.endDate < key) return 'closed'
+  if (sprint.startDate && sprint.startDate <= key) return 'current'
+  return 'open'
 }
 
 export function loadSprints(): Sprint[] {

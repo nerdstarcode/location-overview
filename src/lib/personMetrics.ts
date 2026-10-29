@@ -1,11 +1,11 @@
-import { localDateKey, toDateKey } from './dates'
+import { toDateKey } from './dates'
 import { round1, percentOf } from './numbers'
 import type { CargoConfig, CargoTipo } from './cargosStorage'
 import type { LevelConfig } from './levelsStorage'
 import type { Person } from './peopleStorage'
 import { pointsForEntry, type PersonAllocation } from './personAllocationsStorage'
 import { findSquadNameForIterationPath } from './squadMatching'
-import { formatSprintLabel, type Sprint } from './sprintsStorage'
+import { formatSprintLabel, sprintPhase, type Sprint } from './sprintsStorage'
 import type { Squad } from './squadsStorage'
 import type { TestExecution } from './testExecutionsStorage'
 import { DEFAULT_TEST_POINTS_RATIO, type TestReport } from './testReportsStorage'
@@ -279,12 +279,12 @@ export function loadStatusOf(delivered: number, capacity: number, max: number, m
 
 /** Sprints em andamento (hoje, no fuso local, entre o início e o fim) e as já encerradas. */
 function sprintTimeline(input: PersonMetricsInput): { current: Set<string>; past: Set<string> } {
-  const today = localDateKey(input.today ?? new Date())
   const current = new Set<string>()
   const past = new Set<string>()
   for (const sprint of input.sprints) {
-    if (sprint.startDate <= today && today <= sprint.endDate) current.add(formatSprintLabel(sprint))
-    else if (sprint.endDate && sprint.endDate < today) past.add(formatSprintLabel(sprint))
+    const phase = sprintPhase(sprint, input.today)
+    if (phase === 'current') current.add(formatSprintLabel(sprint))
+    else if (phase === 'closed') past.add(formatSprintLabel(sprint))
   }
   return { current, past }
 }

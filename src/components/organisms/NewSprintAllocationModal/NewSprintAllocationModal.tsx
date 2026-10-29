@@ -29,6 +29,9 @@ export interface NewSprintAllocationModalProps {
   onSave: (entries: Omit<PersonAllocation, 'id'>[]) => string | null
   /** Abre o grupo squad/sprint que já existe. */
   onOpenGroup: (squadId: string, sprintId: string) => void
+  /** Já abre com a squad/sprint escolhidas (renderize com `key` para recomeçar com outras). */
+  initialSquadId?: string
+  initialSprintId?: string
 }
 
 const percentInput = `${COMPACT_FIELD_CLASSES} w-24 text-right`
@@ -45,10 +48,14 @@ export function NewSprintAllocationModal({
   allocations,
   onSave,
   onOpenGroup,
+  initialSquadId = '',
+  initialSprintId = '',
 }: NewSprintAllocationModalProps) {
-  const [squadId, setSquadId] = useState('')
-  const [sprintId, setSprintId] = useState('')
-  const [drafts, setDrafts] = useState<AllocationDraft[]>([])
+  const [squadId, setSquadId] = useState(initialSquadId)
+  const [sprintId, setSprintId] = useState(initialSprintId)
+  const [drafts, setDrafts] = useState<AllocationDraft[]>(() =>
+    initialSquadId && initialSprintId ? buildDefaultAllocation(people, allocations, initialSquadId, initialSprintId) : [],
+  )
   const [error, setError] = useState<string | null>(null)
 
   const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
