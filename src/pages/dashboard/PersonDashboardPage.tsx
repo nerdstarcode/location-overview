@@ -13,6 +13,7 @@ import type { Person } from '../../lib/peopleStorage'
 import { computePersonDevMetrics, computePersonQaMetrics, peerAveragePerSprint, type DelayInfo } from '../../lib/personMetrics'
 import { canShowQaPersonMetrics } from '../../lib/featureFlags'
 import { devLoadBySprint, personSupportView, qaLoadBySprint, type LoadBySprint } from '../../lib/supportMetrics'
+import { itemTimelines } from '../../lib/stateFlow'
 import type { WorkItemRow } from '../../lib/workItems'
 import { loadPersonDashboardBase, usePersonDashboardFilters } from './personDashboardBase'
 import { PersonDashboardFilterBar } from './PersonDashboardFilterBar'
@@ -95,6 +96,9 @@ export function PersonDashboardPage() {
     return null
   }, [person, base, metricsFilters, role, mode, config.pointTypes, devMetrics, qaMetrics])
 
+  // Evolução dos itens da pessoa (os mesmos dos cards: atribuídos a ela nas sprints do filtro).
+  const timelines = useMemo(() => itemTimelines((devMetrics ?? qaMetrics)?.items.map((item) => item.row) ?? []), [devMetrics, qaMetrics])
+
   if (base.people.length === 0) {
     return (
       <div className="rounded-md border border-[var(--border)] p-10 text-center text-sm text-[var(--text)]">
@@ -160,13 +164,14 @@ export function PersonDashboardPage() {
         <PersonDevDashboard
           metrics={devMetrics}
           support={support}
+          timelines={timelines}
           peerAverage={peerAverage}
           mode={mode}
           onModeChange={filters.setMode}
           onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })}
         />
       )}
-      {qaMetrics && <PersonQaDashboard metrics={qaMetrics} support={support} onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })} />}
+      {qaMetrics && <PersonQaDashboard metrics={qaMetrics} support={support} timelines={timelines} onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })} />}
 
       <WorkItemDetailsModal row={openItem?.row ?? null} delay={openItem?.delay} allRows={base.rows} onClose={() => setOpenItem(null)} />
     </div>

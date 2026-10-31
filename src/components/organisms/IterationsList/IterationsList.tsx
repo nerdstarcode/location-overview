@@ -24,7 +24,7 @@ function syncStatusLabel(entry: IterationSyncStatus): string {
     case 'running':
       return 'Sincronizando…'
     case 'done':
-      return `Sincronizada · ${entry.result.workItems} itens`
+      return `Sincronizada · ${entry.result.workItems} itens${entry.result.stateHistoryError ? ' · sem histórico de estados' : ''}`
     case 'error':
       return 'Erro'
   }

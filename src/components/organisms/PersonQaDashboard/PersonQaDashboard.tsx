@@ -7,10 +7,12 @@ import { StatCard } from '../../molecules/StatCard/StatCard'
 import { CapacityLoadCard } from '../../molecules/CapacityLoadCard/CapacityLoadCard'
 import { Chip } from '../../atoms/Chip/Chip'
 import { DataTable } from '../DataTable/DataTable'
+import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
 import { SupportByPersonChart } from '../SupportByPersonChart/SupportByPersonChart'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
 import { DELAY_REASON_LABEL, type PersonQaItem, type PersonQaMetrics } from '../../../lib/personMetrics'
+import type { ItemTimeline } from '../../../lib/stateFlow'
 import type { PersonSupportView } from '../../../lib/supportMetrics'
 
 // Explicação resumida de cada card (tooltip ⓘ).
@@ -31,9 +33,11 @@ export interface PersonQaDashboardProps {
   onOpenItem: (item: PersonQaItem) => void
   /** Apoio dado/recebido no período (mentoria): status "com apoio" e linha com apoio no gráfico. */
   support?: PersonSupportView | null
+  /** Evolução de cada item da pessoa (Active → Testing QA → Testing Prod → Done). */
+  timelines?: ItemTimeline[]
 }
 
-export function PersonQaDashboard({ metrics, onOpenItem, support }: PersonQaDashboardProps) {
+export function PersonQaDashboard({ metrics, onOpenItem, support, timelines }: PersonQaDashboardProps) {
   const chart = useChartTheme()
   const { sprints } = metrics
   const supportBySprint = support?.bySprint
@@ -211,6 +215,16 @@ export function PersonQaDashboard({ metrics, onOpenItem, support }: PersonQaDash
       </ChartCard>
 
       {hasSupport && supportBySprint && <SupportByPersonChart sprintLabels={sprints.map((s) => s.label)} bySprint={supportBySprint} unit="SP" />}
+
+      {timelines && (
+        <ItemStateTimeline
+          timelines={timelines}
+          onOpenItem={(row) => {
+            const item = metrics.items.find((i) => i.row.id === row.id)
+            if (item) onOpenItem(item)
+          }}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartCard

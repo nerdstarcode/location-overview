@@ -6,10 +6,11 @@ import {
   summarizeResultsByPerson,
   summarizeTestRuns,
   testRunsToReportFields,
+  stateHistoryFromUpdates,
   workItemTimeline,
 } from './mappers'
 import { FIXTURE_ITERATION, FIXTURE_TEST_RUNS } from './sprintFixtures'
-import type { AzureWorkItem } from './types'
+import type { AzureWorkItem, AzureWorkItemUpdate } from './types'
 
 function workItem(fields: Record<string, unknown>): AzureWorkItem {
   return {
@@ -122,6 +123,20 @@ describe('summarizeResultsByPerson', () => {
     expect(summary).toEqual([
       { email: 'ada@example.com', name: 'Ada', executed: 3, passed: 1, failed: 1, other: 1 },
       { email: 'alan@example.com', name: 'Alan', executed: 1, passed: 1, failed: 0, other: 0 },
+    ])
+  })
+})
+
+describe('stateHistoryFromUpdates', () => {
+  it('pega cada mudança de State com a data do ChangedDate, em ordem', () => {
+    const updates: AzureWorkItemUpdate[] = [
+      { id: 2, rev: 2, fields: { 'System.State': { oldValue: 'New', newValue: 'Active' }, 'System.ChangedDate': { newValue: '2025-09-03T10:00:00Z' } } },
+      { id: 1, rev: 1, fields: { 'System.State': { newValue: 'New' }, 'System.ChangedDate': { newValue: '2025-09-01T10:00:00Z' } } },
+      { id: 3, rev: 3, fields: { 'System.Title': { newValue: 'Outro' }, 'System.ChangedDate': { newValue: '2025-09-04T10:00:00Z' } } },
+    ]
+    expect(stateHistoryFromUpdates(updates)).toEqual([
+      { state: 'New', date: '2025-09-01T10:00:00Z' },
+      { state: 'Active', date: '2025-09-03T10:00:00Z' },
     ])
   })
 })

@@ -1,6 +1,6 @@
 import { toDateKey } from '../dates'
 import { percentOf } from '../numbers'
-import { buildWorkItemRow, CLOSED_STATES, parseSprintInfo, type WorkItemRow } from '../workItems'
+import { buildWorkItemRow, CLOSED_STATES, parseSprintInfo, type StateChange, type WorkItemRow } from '../workItems'
 import type { AzureConfig } from './azureConfigStorage'
 import type {
   AzureIdentity,
@@ -202,6 +202,17 @@ function updateDate(update: AzureWorkItemUpdate): string {
   const changed = update.fields?.['System.ChangedDate']?.newValue
   if (typeof changed === 'string') return changed
   return update.revisedDate && !update.revisedDate.startsWith('9999') ? update.revisedDate : ''
+}
+
+/** Revisões → cada mudança de System.State com a data, em ordem (inclui o estado de criação). */
+export function stateHistoryFromUpdates(updates: AzureWorkItemUpdate[]): StateChange[] {
+  return updates
+    .flatMap((update) => {
+      const state = update.fields?.['System.State']?.newValue
+      const date = updateDate(update)
+      return typeof state === 'string' && date ? [{ state, date }] : []
+    })
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export function htmlToText(html: string): string {

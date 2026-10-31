@@ -9,7 +9,7 @@ import { DEFAULT_TEST_POINTS_RATIO, loadTestReports, upsertTestReport } from '..
 import { normalizeKey } from '../text'
 import type { WorkItemRow } from '../workItems'
 import { loadWorkItems, mergeWorkItems, saveWorkItems } from '../workItemsStorage'
-import { getIterationWorkItems, listTestResultsForRuns, listTestRuns } from './api'
+import { getIterationWorkItems, getWorkItemsStateHistory, listTestResultsForRuns, listTestRuns } from './api'
 import type { AzureConfig } from './azureConfigStorage'
 import { isAbortError } from './client'
 import {
@@ -156,6 +156,26 @@ export interface SprintSyncResult {
   testReport: boolean
   /** Pessoas com testes executados gravadas para a sprint. */
   testExecutions: number
+  /** Motivo de o histórico de estados não ter vindo (os itens foram gravados sem ele). */
+  stateHistoryError?: string
+}
+
+/**
+ * Junta a cada item o histórico de State (para o fluxo Active → Testing → Done). Se a busca falhar,
+ * devolve os itens sem histórico e o motivo, para a sincronização seguir; o cancelamento propaga.
+ */
+export async function withStateHistory(
+  config: AzureConfig,
+  rows: WorkItemRow[],
+  signal?: AbortSignal,
+): Promise<{ rows: WorkItemRow[]; error?: string }> {
+  try {
+    const history = await getWorkItemsStateHistory(config, rows.map((row) => row.id), signal)
+    return { rows: rows.map((row) => ({ ...row, stateHistory: history.get(row.id) ?? row.stateHistory })) }
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) throw error
+    return { rows, error: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 function syncTestReport(squadId: string, sprint: Sprint | undefined, testRuns: TestRunsSummary | null): boolean {
@@ -237,14 +257,15 @@ export async function syncIterationsToBase(input: IterationsSyncInput): Promise<
     try {
       const items = await getIterationWorkItems(config, project, iteration.path, signal)
       const tests = await fetchIterationTests(config, project, iteration, signal)
+      const withHistory = await withStateHistory(config, items.map((item) => azureWorkItemToRow(item, config)), signal)
       const result = syncSprintToBase({
         teamName: input.teamName,
         members: input.members,
         iteration,
-        workItems: items.map((item) => azureWorkItemToRow(item, config)),
+        workItems: withHistory.rows,
         ...tests,
       })
-      update(iteration.id, { status: 'done', result })
+      update(iteration.id, { status: 'done', result: { ...result, stateHistoryError: withHistory.error } })
     } catch (error) {
       if (isAbortError(error) || signal?.aborted) throw error
       update(iteration.id, { status: 'error', reason: error instanceof Error ? error.message : String(error) })

@@ -1,3 +1,7 @@
+import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
+import { loadAzureConfig } from '../../../lib/azure/azureConfigStorage'
+import { isPointItem } from '../../../lib/azure/sprintMetrics'
+import { itemTimelines } from '../../../lib/stateFlow'
 import { useMemo, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
@@ -263,6 +267,7 @@ export function WorkItemsDashboard({
   const [squads] = useState<Squad[]>(loadSquads)
   const [cargosCatalog] = useState<CargoConfig[]>(loadCargos)
   const [testReportsCatalog] = useState<TestReport[]>(loadTestReports)
+  const [pointTypes] = useState<string[]>(() => loadAzureConfig().pointTypes)
   const [executionMetric, setExecutionMetric] = useState<ExecutionMetric>('execucao')
   const { theme, palette, paletteBorder, tooltipStyle, stateColors: stateColorsFor } = useChartTheme()
   const colorblind = useColorblindMode()
@@ -331,6 +336,12 @@ export function WorkItemsDashboard({
       activeFilters.every(({ def, values }) => def.getValues(row).some((value) => values.includes(value))),
     )
   }, [rows, filters, filterFields])
+
+  // Evolução por item (histórico da sincronização): na visão geral, só os itens de pontos (sem Tasks).
+  const timelines = useMemo(
+    () => itemTimelines(allowedTypes ? filteredRows : filteredRows.filter((row) => isPointItem(row, pointTypes))),
+    [filteredRows, allowedTypes, pointTypes],
+  )
 
   function handleFilterChange(field: string, values: string[]) {
     setFilters((prev) => ({ ...prev, [field]: values }))
@@ -599,6 +610,10 @@ export function WorkItemsDashboard({
         >
           <ReactECharts option={closedStoryPointsBySprintOption} style={{ height: 320 }} notMerge />
         </ChartCard>
+
+        <div className="lg:col-span-2">
+          <ItemStateTimeline timelines={timelines} />
+        </div>
       </div>
     </div>
   )

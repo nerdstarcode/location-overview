@@ -1,6 +1,8 @@
 import { addDays } from '../dates'
 import type { AzureConfig } from './azureConfigStorage'
 import { azureFetch, azureFetchAll } from './client'
+import { stateHistoryFromUpdates } from './mappers'
+import type { StateChange } from '../workItems'
 import type {
   AzureIteration,
   AzureProject,
@@ -212,6 +214,26 @@ export async function listTestResultsForRuns(
 export async function getWorkItemUpdates(config: AzureConfig, id: number, signal?: AbortSignal): Promise<AzureWorkItemUpdate[]> {
   const { value } = await azureFetch<{ value: AzureWorkItemUpdate[] }>(config, `_apis/wit/workItems/${id}/updates`, { signal })
   return value
+}
+
+/** Pedidos de histórico em paralelo: rápido sem estourar o limite de requisições do Azure. */
+const STATE_HISTORY_CONCURRENCY = 5
+
+/** Histórico de State de vários work items (um pedido de /updates por item, 5 por vez), por id. */
+export async function getWorkItemsStateHistory(
+  config: AzureConfig,
+  ids: number[],
+  signal?: AbortSignal,
+): Promise<Map<number, StateChange[]>> {
+  const history = new Map<number, StateChange[]>()
+  const queue = [...ids]
+  async function worker() {
+    for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+      history.set(id, stateHistoryFromUpdates(await getWorkItemUpdates(config, id, signal)))
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(STATE_HISTORY_CONCURRENCY, ids.length) }, worker))
+  return history
 }
 
 const COMMENTS_API_VERSION = '7.1-preview.4'

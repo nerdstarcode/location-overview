@@ -2,12 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadTestReports } from '../testReportsStorage'
 import { loadWorkItems } from '../workItemsStorage'
 import { loadTestExecutions } from '../testExecutionsStorage'
-import { getIterationWorkItems, listTestResultsForRuns, listTestRuns } from './api'
+import { getIterationWorkItems, getWorkItemsStateHistory, listTestResultsForRuns, listTestRuns } from './api'
 import { DEFAULT_AZURE_CONFIG } from './azureConfigStorage'
 import { FIXTURE_ITERATIONS, FIXTURE_MEMBERS, FIXTURE_TEST_RUNS } from './sprintFixtures'
 import { syncIterationsToBase, type IterationSyncProgress } from './syncToBase'
 
-vi.mock('./api', () => ({ getIterationWorkItems: vi.fn(), listTestRuns: vi.fn(), listTestResultsForRuns: vi.fn() }))
+vi.mock('./api', () => ({
+  getIterationWorkItems: vi.fn(),
+  getWorkItemsStateHistory: vi.fn(),
+  listTestRuns: vi.fn(),
+  listTestResultsForRuns: vi.fn(),
+}))
+
+const HISTORY = [
+  { state: 'Active', date: '2025-09-02T12:00:00Z' },
+  { state: 'Done', date: '2025-09-05T12:00:00Z' },
+]
 
 const config = { ...DEFAULT_AZURE_CONFIG, organization: 'org', pat: 'pat' }
 const [first, second] = FIXTURE_ITERATIONS
@@ -20,6 +30,9 @@ describe('syncIterationsToBase', () => {
   beforeEach(() => {
     vi.mocked(getIterationWorkItems).mockReset()
     vi.mocked(listTestRuns).mockReset().mockResolvedValue(FIXTURE_TEST_RUNS)
+    vi.mocked(getWorkItemsStateHistory)
+      .mockReset()
+      .mockImplementation(async (_config, ids) => new Map(ids.map((id) => [id, HISTORY])))
     vi.mocked(listTestResultsForRuns)
       .mockReset()
       .mockResolvedValue([{ id: 1, outcome: 'Passed', runBy: { id: 'g', displayName: 'Grace', uniqueName: 'grace@example.com' } }])
@@ -44,6 +57,8 @@ describe('syncIterationsToBase', () => {
     expect(steps[0]).toEqual({ [first.id]: { status: 'pending' }, [second.id]: { status: 'pending' } })
     expect(steps[1][first.id]).toEqual({ status: 'running' })
     expect(loadWorkItems()).toHaveLength(3)
+    expect(loadWorkItems()[0].stateHistory).toEqual(HISTORY)
+    expect(progress[first.id]).toMatchObject({ result: { stateHistoryError: undefined } })
     expect(loadTestReports().length).toBeGreaterThan(0)
     expect(progress[first.id]).toMatchObject({ result: { testExecutions: 1 } })
     // Uma linha por sprint sincronizada.
@@ -66,6 +81,16 @@ describe('syncIterationsToBase', () => {
 
     expect(progress[first.id]).toEqual({ status: 'error', reason: 'HTTP 500' })
     expect(progress[second.id]).toMatchObject({ status: 'done' })
+  })
+
+  it('grava a sprint sem histórico de estados quando a busca do histórico falha', async () => {
+    vi.mocked(getIterationWorkItems).mockResolvedValueOnce([workItem(1)])
+    vi.mocked(getWorkItemsStateHistory).mockRejectedValueOnce(new Error('HTTP 429'))
+
+    const progress = await syncIterationsToBase({ config, project: 'Proj', teamName: 'Portal', members: FIXTURE_MEMBERS, iterations: [first] })
+
+    expect(progress[first.id]).toMatchObject({ status: 'done', result: { workItems: 1, stateHistoryError: 'HTTP 429' } })
+    expect(loadWorkItems()[0].stateHistory).toBeUndefined()
   })
 
   it('interrompe o lote quando é cancelado', async () => {

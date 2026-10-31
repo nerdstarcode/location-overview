@@ -5,11 +5,18 @@ const STORAGE_KEY = 'location-overview:work-items'
 
 export { getWorkItemKey }
 
-/** Faz upsert de `incoming` sobre `existing` por ID: em caso de ID repetido, o registro importado por último vence. */
+/**
+ * Faz upsert de `incoming` sobre `existing` por ID: em caso de ID repetido, o registro importado por
+ * último vence, mas mantém o histórico de estados já salvo quando o novo não traz (planilha).
+ */
 export function mergeWorkItems(existing: WorkItemRow[], incoming: WorkItemRow[]): WorkItemRow[] {
   const byKey = new Map<string, WorkItemRow>()
   for (const row of existing) byKey.set(getWorkItemKey(row), row)
-  for (const row of incoming) byKey.set(getWorkItemKey(row), row)
+  for (const row of incoming) {
+    const key = getWorkItemKey(row)
+    const stateHistory = row.stateHistory ?? byKey.get(key)?.stateHistory
+    byKey.set(key, stateHistory ? { ...row, stateHistory } : row)
+  }
 
   return [...byKey.values()].sort((a, b) => a.id - b.id)
 }

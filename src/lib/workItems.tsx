@@ -27,6 +27,14 @@ export interface WorkItemRow {
   /** Preenchidos só na sincronização pelo Azure DevOps (a planilha não traz esses campos). */
   parentId?: number
   closedDate?: string
+  /** Cada mudança de State (com a data), em ordem; vem do histórico do item na sincronização. */
+  stateHistory?: StateChange[]
+}
+
+export interface StateChange {
+  state: string
+  /** Data/hora ISO da mudança. */
+  date: string
 }
 
 /** Mesmo conjunto usado no gráfico "Story Points Closed por Sprint" do Dashboard e no default de Runs. */

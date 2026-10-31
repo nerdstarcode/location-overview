@@ -12,6 +12,15 @@ import { SprintPointsByStateChart } from '../../components/organisms/SprintPoint
 import { SprintAllocationComparison } from '../../components/organisms/SprintAllocationComparison/SprintAllocationComparison'
 import { SprintTestRunsSummary } from '../../components/organisms/SprintTestRunsSummary/SprintTestRunsSummary'
 import { SprintAllocationView } from '../../components/organisms/SprintAllocationView/SprintAllocationView'
+import { ItemStateTimeline } from '../../components/organisms/ItemStateTimeline/ItemStateTimeline'
+import { StateFlowTable } from '../../components/organisms/StateFlowTable/StateFlowTable'
+import { WorkItemDetailsModal } from '../../components/organisms/WorkItemDetailsModal/WorkItemDetailsModal'
+import { useAzureRequest } from '../../hooks/azure/useAzureRequest'
+import { getWorkItemsStateHistory } from '../../lib/azure/api'
+import { iterationSprintInfo } from '../../lib/azure/mappers'
+import { isPointItem } from '../../lib/azure/sprintMetrics'
+import { itemFlows, itemTimelines } from '../../lib/stateFlow'
+import type { WorkItemRow } from '../../lib/workItems'
 import { usePersistedState } from '../../hooks/usePersistedState'
 import { normalizeKey } from '../../lib/text'
 import { SprintAnalysisProvider } from '../../contexts/azure/SprintAnalysisProvider'
@@ -33,6 +42,7 @@ function describeSync(outcome: SyncOutcome<SprintSyncResult>): string {
       : `sprint ${result.sprintCreated ? 'criada' : 'atualizada'}`,
     result.testReport ? 'relatório de testes atualizado' : 'sem test runs para o relatório',
     `${result.testExecutions} pessoa(s) com testes executados`,
+    result.stateHistoryError ? `sem histórico de estados (${result.stateHistoryError})` : 'histórico de estados gravado',
   ]
   return `Base atualizada: ${parts.join(' · ')}.`
 }
@@ -51,6 +61,72 @@ function TestRunsSection() {
         onRetry={testRuns.reload}
       />
     </ChartCard>
+  )
+}
+
+/**
+ * Fluxo de estados da sprint ao vivo: busca o histórico de cada item de pontos só quando pedido
+ * (um pedido por item no Azure) e mostra o resumo e a tabela item a item.
+ */
+function StateFlowSection() {
+  const { config } = useAzureConfig()
+  const { iteration, workItems, hiddenIds } = useSprintAnalysis()
+  const [requested, setRequested] = useState(false)
+  const [openRow, setOpenRow] = useState<WorkItemRow | null>(null)
+
+  const rows = useMemo(
+    () => (workItems.data ?? []).filter((row) => !hiddenIds.has(row.id) && isPointItem(row, config.pointTypes)),
+    [workItems.data, hiddenIds, config.pointTypes],
+  )
+  const ids = rows.map((row) => row.id)
+  const history = useAzureRequest(
+    requested && ids.length > 0
+      ? { key: `state-history|${ids.join(',')}`, fetch: (cfg, signal) => getWorkItemsStateHistory(cfg, ids, signal) }
+      : null,
+  )
+
+  const flow = useMemo(() => {
+    if (!history.data) return null
+    const info = iteration ? iterationSprintInfo(iteration) : null
+    const label = info ? formatSprintLabel(info) : ''
+    // Itens com tag Delayed ficam na sprint da tag; o início conhecido é só o desta iteration.
+    const startOf = (sprintLabel: string) => (sprintLabel === label ? (iteration?.attributes.startDate ?? undefined) : undefined)
+    const withHistory = rows.map((row) => ({ ...row, stateHistory: history.data?.get(row.id) }))
+    return { items: itemFlows(withHistory, startOf), timelines: itemTimelines(withHistory) }
+  }, [history.data, rows, iteration])
+
+  if (!flow) {
+    return (
+      <ChartCard
+        title="Fluxo de estados"
+        description="Quando os itens entraram em Active e quanto levaram (dias úteis) até Testing QA, Testing Prod e Done, o tempo em On Hold e as idas a Fail. Busca o histórico de cada item no Azure."
+      >
+        {requested ? (
+          <RequestState
+            loading={history.loading}
+            error={history.error}
+            empty={!history.loading && !history.error}
+            emptyMessage="Sem itens de pontos nesta sprint."
+            loadingMessage={`Buscando o histórico de ${ids.length} item(ns)…`}
+            onRetry={history.reload}
+          />
+        ) : (
+          <Button type="button" variant="secondary" disabled={ids.length === 0} onClick={() => setRequested(true)}>
+            Carregar histórico ({ids.length} itens)
+          </Button>
+        )}
+      </ChartCard>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <ItemStateTimeline timelines={flow.timelines} onOpenItem={setOpenRow} />
+      <ChartCard title="Fluxo de estados por item" description="Dias úteis desde o Active até cada marco. Clique num item para ver o histórico completo.">
+        <StateFlowTable items={flow.items} onOpenItem={setOpenRow} />
+      </ChartCard>
+      <WorkItemDetailsModal row={openRow} allRows={rows} onClose={() => setOpenRow(null)} />
+    </div>
   )
 }
 
@@ -167,6 +243,9 @@ function SprintAnalysisContent() {
               localSquadName={localSquad?.name}
               localSprintLabel={localSprint ? formatSprintLabel(localSprint) : undefined}
             />
+          </div>
+          <div className="lg:col-span-2">
+            <StateFlowSection />
           </div>
           <div className="lg:col-span-2">
             <TestRunsSection />
