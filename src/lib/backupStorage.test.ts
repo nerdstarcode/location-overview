@@ -4,6 +4,7 @@ import { loadAzureConfig, saveAzureConfig, DEFAULT_AZURE_CONFIG } from './azure/
 import { loadCargos, saveCargos } from './cargosStorage'
 import { readRaw, UI_STATE_PREFIX, writeRaw } from './localStore'
 import { loadPeople, savePeople } from './peopleStorage'
+import { loadPersonSupports, savePersonSupports } from './personSupportsStorage'
 import { loadTestReports, saveTestReports } from './testReportsStorage'
 
 const PERSON = { id: 'p1', nome: 'Ada', email: 'ada@x.com', cargo: 'Dev', nivel: 'SR', squadIds: [] }
@@ -47,6 +48,15 @@ describe('parseBackup / importBackup', () => {
     expect(loadCargos()).toEqual([CARGO])
     expect(loadAzureConfig()).toMatchObject({ organization: 'contoso', pat: 'meu-token' })
     expect(readRaw('theme')).toBe('dark')
+  })
+
+  it('leva os apoios entre pessoas na ida e volta', () => {
+    const support = { id: 'x1', supporterId: 'p1', supportedId: 'p2', sprintId: 's1', percentage: 25 }
+    savePersonSupports([support])
+    const file = JSON.parse(JSON.stringify(exportAllData()))
+    window.localStorage.clear()
+    importBackup(parseBackup(file))
+    expect(loadPersonSupports()).toEqual([support])
   })
 
   it('aceita o formato antigo (v1, listas na raiz) e só substitui as seções presentes', () => {

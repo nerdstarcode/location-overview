@@ -212,7 +212,7 @@ function averageOfActive(values: number[]): number {
  * em cada sprint a carga conta no máximo até o Máximo com a extensão. O que passa disso não infla
  * a aderência; vira `overload`, sinal de sobrecarga ou de entrega acima do nível cadastrado.
  */
-function allocationAdherence<T extends { label: string; capacity: number; max: number; maxExtended: number }>(
+export function allocationAdherence<T extends { label: string; capacity: number; max: number; maxExtended: number }>(
   sprints: T[],
   deliveredOf: (sprint: T) => number,
 ) {

@@ -264,7 +264,7 @@ export function WorkItemsDashboard({
   const [cargosCatalog] = useState<CargoConfig[]>(loadCargos)
   const [testReportsCatalog] = useState<TestReport[]>(loadTestReports)
   const [executionMetric, setExecutionMetric] = useState<ExecutionMetric>('execucao')
-  const { theme, palette, paletteBorder, stateColors: stateColorsFor } = useChartTheme()
+  const { theme, palette, paletteBorder, tooltipStyle, stateColors: stateColorsFor } = useChartTheme()
   const colorblind = useColorblindMode()
   const highContrast = useHighContrastMode()
   // Paleta Okabe-Ito (segura para daltonismo) + estilo/marcador distintos, para
@@ -345,7 +345,7 @@ export function WorkItemsDashboard({
     return {
       backgroundColor: 'transparent',
       textStyle: baseTextStyle,
-      tooltip: { trigger: 'item' },
+      tooltip: { ...tooltipStyle, trigger: 'item' },
       legend: { bottom: 0, textStyle: baseTextStyle },
       series: [
         {
@@ -369,7 +369,7 @@ export function WorkItemsDashboard({
     return {
       backgroundColor: 'transparent',
       textStyle: baseTextStyle,
-      tooltip: { trigger: 'axis' },
+      tooltip: { ...tooltipStyle, trigger: 'axis' },
       grid: baseGrid,
       xAxis: { type: 'category', data: entries.map(([name]) => name), axisLabel: baseTextStyle, axisLine: axisLineStyle },
       yAxis: { type: 'value', axisLabel: baseTextStyle, axisLine: axisLineStyle, splitLine: { lineStyle: { color: theme.border } } },
@@ -392,7 +392,7 @@ export function WorkItemsDashboard({
     return {
       backgroundColor: 'transparent',
       textStyle: baseTextStyle,
-      tooltip: { trigger: 'axis' },
+      tooltip: { ...tooltipStyle, trigger: 'axis' },
       legend: { bottom: 0, textStyle: baseTextStyle },
       grid: { ...baseGrid, bottom: 32 },
       xAxis: { type: 'category', data: entries.map(([name]) => name), axisLabel: baseTextStyle, axisLine: axisLineStyle },
@@ -444,10 +444,8 @@ export function WorkItemsDashboard({
       backgroundColor: 'transparent',
       textStyle: baseTextStyle,
       tooltip: {
+        ...tooltipStyle,
         trigger: 'axis',
-        backgroundColor: theme.bgElevated,
-        borderColor: theme.border,
-        textStyle: { color: theme.textH },
         formatter: (rawParams: unknown) => {
           const params = (Array.isArray(rawParams) ? rawParams : [rawParams]) as Array<{
             marker: string

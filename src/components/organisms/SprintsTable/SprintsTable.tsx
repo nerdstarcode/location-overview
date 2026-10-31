@@ -4,9 +4,12 @@ import { AllocationGroupDetail } from '../AllocationGroupDetail/AllocationGroupD
 import { NewSprintAllocationModal } from '../NewSprintAllocationModal/NewSprintAllocationModal'
 import { SprintFormModal } from '../SprintFormModal/SprintFormModal'
 import { SprintSquadsPlan } from '../SprintSquadsPlan/SprintSquadsPlan'
+import { SprintSupports } from '../SprintSupports/SprintSupports'
 import { SprintTimeline, type SprintPhaseFilter, type SprintTimelineRow } from '../SprintTimeline/SprintTimeline'
 import { useAllocationActions } from '../../../hooks/useAllocationActions'
 import { usePersistedState } from '../../../hooks/usePersistedState'
+import { useSupportActions } from '../../../hooks/useSupportActions'
+import { loadCargos, type CargoConfig } from '../../../lib/cargosStorage'
 import { createId } from '../../../lib/createId'
 import { loadLevels, type LevelConfig } from '../../../lib/levelsStorage'
 import type { PersonAllocation } from '../../../lib/personAllocationsStorage'
@@ -27,7 +30,8 @@ const EMPTY_SPRINT: Sprint = { id: '', number: 1, fiscalYear: '', startDate: '',
 
 // Aba Sprints: a linha do tempo das sprints (fechada, atual, aberta) → a alocação de cada squad
 // na sprint, com o planejado × previsto → o detalhe das pessoas da squad. O cadastro das sprints
-// (nova, editar, excluir) fica na própria linha do tempo.
+// (nova, editar, excluir) fica na própria linha do tempo, e os apoios (mentoria) entre pessoas
+// ficam na sprint aberta e no detalhe da squad.
 export function SprintsTable() {
   const actions = useAllocationActions()
   const { allocations, people } = actions
@@ -35,6 +39,9 @@ export function SprintsTable() {
   const [squads] = useState<Squad[]>(loadSquads)
   const [levels] = useState<LevelConfig[]>(loadLevels)
   const [workItems] = useState<WorkItemRow[]>(loadWorkItems)
+  const [cargos] = useState<CargoConfig[]>(loadCargos)
+  const supportContext = useMemo(() => ({ allocations, people, cargos }), [allocations, people, cargos])
+  const supportActions = useSupportActions(supportContext)
   const [phaseFilter, setPhaseFilter] = usePersistedState<SprintPhaseFilter>('sprints-phase-filter', 'active')
   const [openSprintId, setOpenSprintId] = useState<string | null>(null)
   const [openSquadId, setOpenSquadId] = useState<string | null>(null)
@@ -44,14 +51,19 @@ export function SprintsTable() {
 
   const base: PlanBase = useMemo(() => ({ allocations, people, levels, workItems }), [allocations, people, levels, workItems])
 
+  const orderedSprints = useMemo(
+    () => [...sprints].sort((a, b) => a.startDate.localeCompare(b.startDate) || a.fiscalYear.localeCompare(b.fiscalYear) || a.number - b.number),
+    [sprints],
+  )
+
   const timeline = useMemo<SprintTimelineRow[]>(() => {
     const today = new Date()
-    return [...sprints]
-      .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.fiscalYear.localeCompare(b.fiscalYear) || a.number - b.number)
-      .map((sprint) => ({ sprint, phase: sprintPhase(sprint, today), plan: sprintPlanSummary(sprintSquadPlans(sprint, squads, base)) }))
-  }, [sprints, squads, base])
+    return orderedSprints.map((sprint) => ({ sprint, phase: sprintPhase(sprint, today), plan: sprintPlanSummary(sprintSquadPlans(sprint, squads, base)) }))
+  }, [orderedSprints, squads, base])
 
   const openSprint = sprints.find((s) => s.id === openSprintId)
+  const previousSprint = openSprint ? orderedSprints[orderedSprints.findIndex((s) => s.id === openSprint.id) - 1] : undefined
+  const supportProps = { supports: supportActions.supports, context: supportContext, onAdd: supportActions.addSupport }
   const plans = useMemo(() => (openSprint ? sprintSquadPlans(openSprint, squads, base) : []), [openSprint, squads, base])
   const openSquadPlan = plans.find((p) => p.squad.id === openSquadId)
 
@@ -97,6 +109,7 @@ export function SprintsTable() {
             return message
           }}
           onEdit={(entry) => setEditing({ ...entry })}
+          support={supportProps}
         />
         {editModal}
       </>
@@ -105,7 +118,7 @@ export function SprintsTable() {
 
   if (openSprint) {
     return (
-      <>
+      <div className="flex w-full flex-col gap-4">
         <SprintSquadsPlan
           sprint={openSprint}
           phase={sprintPhase(openSprint)}
@@ -114,6 +127,17 @@ export function SprintsTable() {
           onBack={() => setOpenSprintId(null)}
           onOpenSquad={(squad) => setOpenSquadId(squad.id)}
           onCreateDefault={setDefaultFor}
+        />
+        <SprintSupports
+          sprint={openSprint}
+          previousSprint={previousSprint}
+          supports={supportActions.supports.filter((s) => s.sprintId === openSprint.id)}
+          context={supportContext}
+          onAdd={supportActions.addSupport}
+          onRemove={supportActions.removeSupports}
+          onRestore={supportActions.restoreSupports}
+          onSetPercentage={supportActions.setPercentage}
+          onCopyPrevious={() => (previousSprint ? supportActions.copyFromSprint(previousSprint.id, openSprint.id) : 0)}
         />
         <NewSprintAllocationModal
           key={defaultFor?.id ?? 'fechado'}
@@ -138,7 +162,7 @@ export function SprintsTable() {
             setOpenSquadId(squadId)
           }}
         />
-      </>
+      </div>
     )
   }
 

@@ -26,6 +26,8 @@ export interface ChartTheme {
   axisLine: { lineStyle: { color: string } }
   splitLine: { lineStyle: { color: string } }
   grid: { left: number; right: number; top: number; bottom: number; containLabel: boolean }
+  /** Fundo, borda e texto do tooltip no tema atual (o padrão do ECharts é sempre branco). */
+  tooltipStyle: { backgroundColor: string; borderColor: string; textStyle: { color: string } }
   /** Fundo transparente, cor de texto e grid padrão; `overrides` sobrescreve o que precisar. */
   baseOption: (overrides?: EChartsOption) => EChartsOption
   categoryAxis: (data: string[], extra?: AxisOption) => AxisOption
@@ -68,6 +70,7 @@ export function useChartTheme(): ChartTheme {
     const axisLine = { lineStyle: { color: theme.border } }
     const splitLine = { lineStyle: { color: theme.border } }
     const grid = { left: 8, right: 16, top: 40, bottom: 8, containLabel: true }
+    const tooltipStyle = { backgroundColor: theme.bgElevated, borderColor: theme.border, textStyle: { color: theme.textH } }
     const palette = resolvePalette(theme.isDark, colorblind, highContrast)
     const colorMode = resolveColorMode(colorblind, highContrast)
     return {
@@ -80,7 +83,18 @@ export function useChartTheme(): ChartTheme {
       axisLine,
       splitLine,
       grid,
-      baseOption: (overrides = {}) => ({ backgroundColor: 'transparent', textStyle, grid, ...overrides }),
+      tooltipStyle,
+      baseOption: (overrides = {}) => {
+        // O tooltip segue o tema; o que cada gráfico passar em `tooltip` (trigger, formatter…) vem por cima.
+        const { tooltip, ...rest } = overrides
+        return {
+          backgroundColor: 'transparent',
+          textStyle,
+          grid,
+          ...rest,
+          ...(tooltip && !Array.isArray(tooltip) ? { tooltip: { ...tooltipStyle, ...tooltip } } : tooltip ? { tooltip } : {}),
+        }
+      },
       categoryAxis: (data, extra = {}) => ({ type: 'category', data, axisLabel: textStyle, axisLine, ...extra }),
       sprintAxis: (labels) => ({
         type: 'category',

@@ -9,6 +9,7 @@ import { SegmentedControl } from '../../molecules/SegmentedControl/SegmentedCont
 import { Checkbox } from '../../atoms/Checkbox/Checkbox'
 import { Chip } from '../../atoms/Chip/Chip'
 import { DataTable } from '../DataTable/DataTable'
+import { SupportByPersonChart } from '../SupportByPersonChart/SupportByPersonChart'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
 import { CLOSED_STATES } from '../../../lib/workItems'
@@ -21,10 +22,12 @@ import {
   type PersonDevItem,
   type PersonDevMetrics,
 } from '../../../lib/personMetrics'
+import type { PersonSupportView } from '../../../lib/supportMetrics'
 
 const ZONE_SERIES = 'Extensão (+3 dias úteis acima do máximo)'
 const IN_PROGRESS_SERIES = 'Em andamento (sprint atual)'
 const IN_PROGRESS_DELAYED_SERIES = 'Em andamento atrasado'
+const SUPPORT_SERIES = 'Apoio a outras pessoas'
 /** Mesmo tom de --color-brand-action-alert. */
 const OPEN_DELAYED_COLOR = '#ff7a00'
 
@@ -60,16 +63,35 @@ export interface PersonDevDashboardProps {
   mode: DevAttribution
   onModeChange: (mode: DevAttribution) => void
   onOpenItem: (item: PersonDevItem) => void
+  /** Apoio dado/recebido no período (mentoria): status "com apoio" e série de apoio no gráfico. */
+  support?: PersonSupportView | null
 }
 
-export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, onOpenItem }: PersonDevDashboardProps) {
+export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, onOpenItem, support }: PersonDevDashboardProps) {
   const chart = useChartTheme()
   const [onlyDelayed, setOnlyDelayed] = useState(false)
   const { sprints } = metrics
+  const supportBySprint = support?.bySprint
+  const hasSupport = !!supportBySprint && supportBySprint.size > 0
 
-  const option: EChartsOption = useMemo(
-    () =>
-      chart.baseOption({
+  const option: EChartsOption = useMemo(() => {
+    // Rótulo no topo da pilha (na última série): a carga própria da sprint, com ⚠ em vermelho quando
+    // passou até da extensão (sobrecarga ou entrega acima do nível); o apoio fica no tooltip.
+    const topLabel = {
+      show: true,
+      position: 'top' as const,
+      color: chart.theme.textH,
+      fontWeight: 'bold' as const,
+      formatter: ({ dataIndex }: { dataIndex: number }) => {
+        const sprint = sprints[dataIndex]
+        const total = round1(deliveredOf(sprint) + openOf(sprint))
+        if (total <= 0) return ''
+        const text = openOf(sprint) > 0 ? `${deliveredOf(sprint)} + ${openOf(sprint)}` : String(total)
+        return sprint.capacity > 0 && total > sprint.maxExtended ? `{overload|⚠ ${text}}` : text
+      },
+      rich: { overload: { color: OVERLOAD_COLOR, fontWeight: 'bold' as const } },
+    }
+    return chart.baseOption({
         tooltip: {
           trigger: 'axis',
           // Sem a série da zona (o valor dela é a diferença Máximo − Previsto) e com a situação da sprint.
@@ -86,11 +108,21 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
             const total = round1(deliveredOf(sprint) + openOf(sprint))
             const lines = params
               .filter((p) => p.seriesName !== ZONE_SERIES && p.value !== null && p.value !== undefined)
-              .filter((p) => !([IN_PROGRESS_SERIES, IN_PROGRESS_DELAYED_SERIES].includes(p.seriesName) && !p.value))
+              .filter((p) => !([IN_PROGRESS_SERIES, IN_PROGRESS_DELAYED_SERIES, SUPPORT_SERIES].includes(p.seriesName) && !p.value))
               .map((p) => `${p.marker} ${p.seriesName}: ${p.value}`)
             lines.push(`<b>Entregue: ${deliveredOf(sprint)}</b>`)
             if (openOf(sprint) > 0) lines.push(`<b>Em aberto: ${openOf(sprint)}</b> (comprometido: ${total})`)
             if (sprint.capacity > 0) lines.push(`Situação: ${LOAD_STATUS_LABEL[loadStatusOf(total, sprint.capacity, sprint.max, sprint.maxExtended)]}`)
+            const given = supportBySprint?.get(sprint.label)
+            if (given && given.points > 0) {
+              // Quem foi apoiado fica no gráfico "Apoio por pessoa"; aqui só o total.
+              const people = given.detail.length
+              lines.push(`<b>+ ${given.points} de apoio</b> (${people} ${people === 1 ? 'pessoa' : 'pessoas'})`)
+              if (sprint.capacity > 0) {
+                const status = loadStatusOf(total + given.points, sprint.capacity, sprint.max, sprint.maxExtended)
+                lines.push(`Situação com apoio: ${LOAD_STATUS_LABEL[status]}`)
+              }
+            }
             return [params[0].axisValueLabel, ...lines].join('<br/>')
           },
         },
@@ -152,23 +184,28 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
               decal: { symbol: 'line', dashArrayX: [4, 2], rotation: Math.PI / 4 },
             },
             barMaxWidth: 40,
-            // Última série da pilha: o rótulo no topo mostra o total entregue na sprint, com ⚠
-            // em vermelho quando passou até da extensão (sobrecarga ou entrega acima do nível).
-            label: {
-              show: true,
-              position: 'top',
-              color: chart.theme.textH,
-              fontWeight: 'bold',
-              formatter: ({ dataIndex }: { dataIndex: number }) => {
-                const sprint = sprints[dataIndex]
-                const total = round1(deliveredOf(sprint) + openOf(sprint))
-                if (total <= 0) return ''
-                const text = openOf(sprint) > 0 ? `${deliveredOf(sprint)} + ${openOf(sprint)}` : String(total)
-                return sprint.capacity > 0 && total > sprint.maxExtended ? `{overload|⚠ ${text}}` : text
-              },
-              rich: { overload: { color: OVERLOAD_COLOR, fontWeight: 'bold' } },
-            },
+            // Sem apoio, é a última série da pilha e leva o rótulo do topo.
+            ...(hasSupport ? {} : { label: topLabel }),
           },
+          ...(hasSupport
+            ? [
+                {
+                  // Crédito pelo apoio (mentoria), em cima da carga própria: não é entrega da pessoa.
+                  name: SUPPORT_SERIES,
+                  type: 'bar' as const,
+                  stack: 'delivered',
+                  data: sprints.map((s) => supportBySprint?.get(s.label)?.points ?? 0),
+                  itemStyle: {
+                    color: chart.palette[3],
+                    opacity: 0.55,
+                    ...chart.paletteBorder,
+                    decal: { symbol: 'line', dashArrayX: [2, 2], rotation: -Math.PI / 4 },
+                  },
+                  barMaxWidth: 40,
+                  label: topLabel,
+                },
+              ]
+            : []),
           {
             name: 'Previsto (Alocação)',
             type: 'line',
@@ -198,9 +235,8 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
             symbol: 'none',
           },
         ],
-      }),
-    [sprints, metrics.averagePerSprint, chart],
-  )
+    })
+  }, [sprints, metrics.averagePerSprint, chart, supportBySprint, hasSupport])
 
   // Só as sprints com entrega: as que têm apenas alocação ficariam com o grupo vazio.
   const squadOption: EChartsOption = useMemo(() => {
@@ -342,7 +378,7 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
         <SegmentedControl aria-label="Atribuição dos pontos" options={ATTRIBUTION_OPTIONS} value={mode} onChange={onModeChange} />
       </div>
 
-      <CapacityLoadCard label="Entrega × previsto" info={INFO.load} unit="SP" load={metrics} />
+      <CapacityLoadCard label="Entrega × previsto" info={INFO.load} unit="SP" load={metrics} support={support?.card} />
 
       {/* 5 cards: 1/2/3 colunas e uma linha só em telas largas. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -371,6 +407,8 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
       >
         <ReactECharts option={option} style={{ height: 320 }} notMerge />
       </ChartCard>
+
+      {hasSupport && supportBySprint && <SupportByPersonChart sprintLabels={sprints.map((s) => s.label)} bySprint={supportBySprint} unit="SP" />}
 
       <ChartCard
         title="Story Points entregues por sprint e squad"

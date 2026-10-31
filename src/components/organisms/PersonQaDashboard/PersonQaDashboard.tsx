@@ -7,9 +7,11 @@ import { StatCard } from '../../molecules/StatCard/StatCard'
 import { CapacityLoadCard } from '../../molecules/CapacityLoadCard/CapacityLoadCard'
 import { Chip } from '../../atoms/Chip/Chip'
 import { DataTable } from '../DataTable/DataTable'
+import { SupportByPersonChart } from '../SupportByPersonChart/SupportByPersonChart'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
 import { DELAY_REASON_LABEL, type PersonQaItem, type PersonQaMetrics } from '../../../lib/personMetrics'
+import type { PersonSupportView } from '../../../lib/supportMetrics'
 
 // Explicação resumida de cada card (tooltip ⓘ).
 const INFO = {
@@ -27,11 +29,15 @@ const INFO = {
 export interface PersonQaDashboardProps {
   metrics: PersonQaMetrics
   onOpenItem: (item: PersonQaItem) => void
+  /** Apoio dado/recebido no período (mentoria): status "com apoio" e linha com apoio no gráfico. */
+  support?: PersonSupportView | null
 }
 
-export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProps) {
+export function PersonQaDashboard({ metrics, onOpenItem, support }: PersonQaDashboardProps) {
   const chart = useChartTheme()
   const { sprints } = metrics
+  const supportBySprint = support?.bySprint
+  const hasSupport = !!supportBySprint && supportBySprint.size > 0
 
   const option: EChartsOption = useMemo(
     () =>
@@ -80,6 +86,20 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
             itemStyle: { color: chart.palette[4] },
             symbol: 'circle',
           },
+          ...(hasSupport
+            ? [
+                {
+                  // Test Points + o crédito pelo apoio (mentoria) a outras pessoas QA.
+                  name: 'Test Points + apoio (SP)',
+                  type: 'line' as const,
+                  yAxisIndex: 1,
+                  data: sprints.map((s) => round1(s.testPoints + (supportBySprint?.get(s.label)?.points ?? 0))),
+                  itemStyle: { color: chart.palette[3] },
+                  lineStyle: { type: 'dotted' as const },
+                  symbol: 'diamond',
+                },
+              ]
+            : []),
           {
             name: 'Capacity (Alocação)',
             type: 'line',
@@ -92,7 +112,7 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
           },
         ],
       }),
-    [sprints, metrics.averageExecutedPerSprint, chart],
+    [sprints, metrics.averageExecutedPerSprint, chart, supportBySprint, hasSupport],
   )
 
   const executedSprints = useMemo(() => sprints.filter((s) => s.executed > 0), [sprints])
@@ -165,7 +185,7 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
 
   return (
     <div className="flex flex-col gap-4">
-      <CapacityLoadCard label="Entrega × previsto" info={INFO.load} unit="SP" load={metrics} />
+      <CapacityLoadCard label="Entrega × previsto" info={INFO.load} unit="SP" load={metrics} support={support?.card} />
 
       {/* 5 cards: 1/2/3 colunas e uma linha só em telas largas. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -189,6 +209,8 @@ export function PersonQaDashboard({ metrics, onOpenItem }: PersonQaDashboardProp
       >
         <ReactECharts option={option} style={{ height: 320 }} notMerge />
       </ChartCard>
+
+      {hasSupport && supportBySprint && <SupportByPersonChart sprintLabels={sprints.map((s) => s.label)} bySprint={supportBySprint} unit="SP" />}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartCard

@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { HeartHandshake } from 'lucide-react'
+import { Chip } from '../../components/atoms/Chip/Chip'
 import { Select } from '../../components/atoms/Select/Select'
 import { SegmentedControl } from '../../components/molecules/SegmentedControl/SegmentedControl'
 import { PersonDevDashboard } from '../../components/organisms/PersonDevDashboard/PersonDevDashboard'
@@ -10,6 +12,7 @@ import type { CargoTipo } from '../../lib/cargosStorage'
 import type { Person } from '../../lib/peopleStorage'
 import { computePersonDevMetrics, computePersonQaMetrics, peerAveragePerSprint, type DelayInfo } from '../../lib/personMetrics'
 import { canShowQaPersonMetrics } from '../../lib/featureFlags'
+import { devLoadBySprint, personSupportView, qaLoadBySprint, type LoadBySprint } from '../../lib/supportMetrics'
 import type { WorkItemRow } from '../../lib/workItems'
 import { loadPersonDashboardBase, usePersonDashboardFilters } from './personDashboardBase'
 import { PersonDashboardFilterBar } from './PersonDashboardFilterBar'
@@ -66,6 +69,32 @@ export function PersonDashboardPage() {
     [person, base, metricsFilters, role],
   )
 
+  // Apoio (mentoria): a carga de cada apoiado vem da mesma visão (SP ou Test Points), nas mesmas
+  // sprints, mas sem o filtro de squad, porque o apoio é por sprint.
+  const support = useMemo(() => {
+    if (!person) return null
+    const supportedFilters = { ...metricsFilters, selectedSquads: [], onlyAllocatedSprints: false }
+    const cache = new Map<string, LoadBySprint>()
+    const loadOf = (personId: string): LoadBySprint => {
+      const supported = base.people.find((p) => p.id === personId)
+      if (!supported) return new Map()
+      if (!cache.has(personId)) {
+        const input = { ...base, ...supportedFilters, person: supported }
+        cache.set(
+          personId,
+          role === 'dev'
+            ? devLoadBySprint(computePersonDevMetrics({ ...input, mode, pointTypes: config.pointTypes }))
+            : qaLoadBySprint(computePersonQaMetrics(input)),
+        )
+      }
+      return cache.get(personId)!
+    }
+    const common = { personId: person.id, supports: base.supports, sprints: base.sprints, context: base, loadOf }
+    if (devMetrics) return personSupportView({ ...common, metricsSprints: devMetrics.sprints, loadOfSprint: (s) => s.onTime + s.delayed + s.inProgress + s.inProgressDelayed })
+    if (qaMetrics) return personSupportView({ ...common, metricsSprints: qaMetrics.sprints, loadOfSprint: (s) => s.testPoints })
+    return null
+  }, [person, base, metricsFilters, role, mode, config.pointTypes, devMetrics, qaMetrics])
+
   if (base.people.length === 0) {
     return (
       <div className="rounded-md border border-[var(--border)] p-10 text-center text-sm text-[var(--text)]">
@@ -117,16 +146,27 @@ export function PersonDashboardPage() {
         </p>
       )}
 
+      {support && support.receivedFrom.length > 0 && (
+        <p role="note" className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--code-bg)] px-3 py-2 text-sm text-[var(--text-h)]">
+          <HeartHandshake size={16} aria-hidden="true" />
+          Apoiado por
+          {support.receivedFrom.map((s) => (
+            <Chip key={`${s.personId}-${s.sprintLabel}`} label={`${s.nome} (${s.percentage}%) · ${s.sprintLabel}`} />
+          ))}
+        </p>
+      )}
+
       {devMetrics && (
         <PersonDevDashboard
           metrics={devMetrics}
+          support={support}
           peerAverage={peerAverage}
           mode={mode}
           onModeChange={filters.setMode}
           onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })}
         />
       )}
-      {qaMetrics && <PersonQaDashboard metrics={qaMetrics} onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })} />}
+      {qaMetrics && <PersonQaDashboard metrics={qaMetrics} support={support} onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })} />}
 
       <WorkItemDetailsModal row={openItem?.row ?? null} delay={openItem?.delay} allRows={base.rows} onClose={() => setOpenItem(null)} />
     </div>

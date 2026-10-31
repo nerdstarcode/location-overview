@@ -1,17 +1,24 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { ArrowLeft, Pencil, Plus, Trash2, UserPlus, X } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { ArrowLeft, HeartHandshake, Pencil, Plus, Trash2, UserPlus } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '../DataTable/DataTable'
 import { EditableCell } from '../DataTable/EditableCell'
 import { Button } from '../../atoms/Button/Button'
 import { COMPACT_FIELD_CLASSES } from '../../atoms/Input/compactFieldClasses'
 import { Select } from '../../atoms/Select/Select'
+import { Chip } from '../../atoms/Chip/Chip'
+import { Modal } from '../../molecules/Modal/Modal'
+import { SupportForm } from '../../molecules/SupportForm/SupportForm'
+import { UndoNotice } from '../../molecules/UndoNotice/UndoNotice'
+import { useUndo } from '../../../hooks/useUndo'
+import { round1 } from '../../../lib/numbers'
+import { supportIssue, type PersonSupport, type SupportContext, type SupportDraft } from '../../../lib/personSupportsStorage'
 import type { LevelConfig } from '../../../lib/levelsStorage'
 import type { Person } from '../../../lib/peopleStorage'
 import type { Squad } from '../../../lib/squadsStorage'
 import { formatSprintLabel, type Sprint } from '../../../lib/sprintsStorage'
 import type { WorkItemRow } from '../../../lib/workItems'
-import { personPoints } from '../../../lib/allocationWorkItems'
+import { personPoints, personSprintStoryPoints } from '../../../lib/allocationWorkItems'
 import {
   buildDefaultAllocation,
   computeAllocatedDays,
@@ -19,9 +26,6 @@ import {
   remainingPercentage,
   type PersonAllocation,
 } from '../../../lib/personAllocationsStorage'
-
-/** Quanto tempo o "Desfazer" fica na tela depois de remover. */
-const UNDO_TIMEOUT_MS = 8000
 
 export interface AllocationGroupDetailProps {
   squad: Squad
@@ -44,6 +48,12 @@ export interface AllocationGroupDetailProps {
   onSetPercentage: (ids: string[], percentage: number) => string | null
   onMove: (ids: string[], squadId: string) => string | null
   onEdit: (entry: PersonAllocation) => void
+  /** Apoios (mentoria) da sprint: mostra quem apoia quem e permite cadastrar pela linha. */
+  support?: {
+    supports: PersonSupport[]
+    context: SupportContext
+    onAdd: (draft: SupportDraft) => string | null
+  }
 }
 
 const percentInput = `${COMPACT_FIELD_CLASSES} w-24 text-right`
@@ -69,6 +79,7 @@ export function AllocationGroupDetail({
   onSetPercentage,
   onMove,
   onEdit,
+  support,
 }: AllocationGroupDetailProps) {
   const [newPersonId, setNewPersonId] = useState('')
   const [newPercentage, setNewPercentage] = useState(100)
@@ -76,15 +87,11 @@ export function AllocationGroupDetail({
   const [bulkPercentage, setBulkPercentage] = useState(100)
   const [moveSquadId, setMoveSquadId] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [undo, setUndo] = useState<{ entries: PersonAllocation[]; label: string } | null>(null)
+  const { undo, offer, clear } = useUndo<PersonAllocation>()
   /** Muda quando uma edição inline é recusada, para a célula voltar ao valor salvo. */
   const [revision, setRevision] = useState(0)
-
-  useEffect(() => {
-    if (!undo) return
-    const timer = setTimeout(() => setUndo(null), UNDO_TIMEOUT_MS)
-    return () => clearTimeout(timer)
-  }, [undo])
+  /** Pessoa da linha em que o atalho "Apoio" foi aberto. */
+  const [supportFor, setSupportFor] = useState<string | null>(null)
 
   const peopleById = new Map(people.map((p) => [p.id, p]))
   const nameOf = (personId: string) => peopleById.get(personId)?.nome ?? '—'
@@ -126,16 +133,13 @@ export function AllocationGroupDetail({
     if (removed.length === 0) return
     setSelectedIds(new Set())
     setError(null)
-    setUndo({
-      entries: removed,
-      label: removed.length === 1 ? `${nameOf(removed[0].personId)} removido(a)` : `${removed.length} pessoas removidas`,
-    })
+    offer(removed, removed.length === 1 ? `${nameOf(removed[0].personId)} removido(a)` : `${removed.length} pessoas removidas`)
   }
 
   function handleUndo() {
     if (!undo) return
-    onRestore(undo.entries)
-    setUndo(null)
+    onRestore(undo.items)
+    clear()
   }
 
   function handleInlinePercentage(entry: PersonAllocation, value: string) {
@@ -178,6 +182,32 @@ export function AllocationGroupDetail({
   const pointsOf = (entry: PersonAllocation) => pointsForEntry(entry, sprint, peopleById.get(entry.personId), levels)
   const workOf = (entry: PersonAllocation) => personPoints(workItems, squad, sprint, peopleById.get(entry.personId))
 
+  // Apoios válidos da sprint; o crédito de quem apoia é a % sobre os SP planejados do apoiado na sprint.
+  const sprintSupports = support
+    ? support.supports.filter((s) => s.sprintId === sprint.id && !supportIssue(s, support.context))
+    : []
+  const supportCredit = (s: PersonSupport) => round1((personSprintStoryPoints(workItems, sprint, peopleById.get(s.supportedId)) * s.percentage) / 100)
+  const supportLabels = (personId: string) => [
+    ...sprintSupports
+      .filter((s) => s.supporterId === personId)
+      .map((s) => `Apoia ${nameOf(s.supportedId)} (${s.percentage}%) · +${supportCredit(s)} SP`),
+    ...sprintSupports.filter((s) => s.supportedId === personId).map((s) => `Apoiado por ${nameOf(s.supporterId)} (${s.percentage}%)`),
+  ]
+  const allocatedInSprint = new Set(allocations.filter((a) => a.sprintId === sprint.id && a.percentage > 0).map((a) => a.personId))
+
+  const supportColumn: ColumnDef<PersonAllocation, unknown> = {
+    id: 'support',
+    header: 'Apoio',
+    accessorFn: (entry) => supportLabels(entry.personId).join(' '),
+    cell: ({ row }) => (
+      <div className="flex flex-wrap gap-1">
+        {supportLabels(row.original.personId).map((label) => (
+          <Chip key={label} label={label} />
+        ))}
+      </div>
+    ),
+  }
+
   const columns: ColumnDef<PersonAllocation, unknown>[] = [
     {
       id: 'person',
@@ -203,11 +233,23 @@ export function AllocationGroupDetail({
     { id: 'max', header: 'Max Points', cell: ({ row }) => pointsOf(row.original).max.toFixed(1), meta: { align: 'right', numeric: true } },
     { id: 'storyPoints', header: 'Story Points', cell: ({ row }) => workOf(row.original).storyPoints, meta: { align: 'right', numeric: true } },
     { id: 'pontoExecucao', header: 'Pontos de Execução', cell: ({ row }) => workOf(row.original).pontoExecucao, meta: { align: 'right', numeric: true } },
+    ...(support ? [supportColumn] : []),
     {
       id: 'actions',
       header: '',
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
+          {support && (
+            <button
+              type="button"
+              onClick={() => setSupportFor(row.original.personId)}
+              aria-label={`Cadastrar apoio de ${nameOf(row.original.personId)}`}
+              title="Apoio (mentoria)"
+              className="rounded p-1 text-[var(--text)] hover:bg-[var(--code-bg)] hover:text-[var(--text-h)]"
+            >
+              <HeartHandshake size={14} />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onEdit(row.original)}
@@ -304,24 +346,7 @@ export function AllocationGroupDetail({
         </p>
       )}
 
-      {undo && (
-        <div role="status" className="flex items-center justify-between gap-2 rounded-md bg-[var(--code-bg)] px-3 py-2 text-sm text-[var(--text-h)]">
-          <span>{undo.label}</span>
-          <div className="flex items-center gap-1">
-            <Button type="button" size="sm" variant="secondary" onClick={handleUndo}>
-              Desfazer
-            </Button>
-            <button
-              type="button"
-              aria-label="Fechar aviso"
-              onClick={() => setUndo(null)}
-              className="rounded p-1 text-[var(--text)] hover:text-[var(--text-h)]"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-      )}
+      {undo && <UndoNotice label={undo.label} onUndo={handleUndo} onClose={clear} />}
 
       {selected.length > 0 && (
         <div
@@ -395,6 +420,22 @@ export function AllocationGroupDetail({
         onTogglePage={togglePage}
         rowSelectionAriaLabel={(entry) => `Selecionar ${nameOf(entry.personId)}`}
       />
+
+      {support && (
+        <Modal open={supportFor !== null} onClose={() => setSupportFor(null)} title={`Apoio de ${supportFor ? nameOf(supportFor) : ''} — ${formatSprintLabel(sprint)}`}>
+          <SupportForm
+            key={supportFor ?? 'fechado'}
+            people={people.filter((p) => allocatedInSprint.has(p.id))}
+            cargos={support.context.cargos}
+            initialSupporterId={supportFor ?? ''}
+            onSubmit={(draft) => {
+              const message = support.onAdd({ ...draft, sprintId: sprint.id })
+              if (message === null) setSupportFor(null)
+              return message
+            }}
+          />
+        </Modal>
+      )}
     </div>
   )
 }

@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import clsx from 'clsx'
 import { InfoTooltip } from '../InfoTooltip/InfoTooltip'
+import { LoadStatusChip } from '../LoadStatusChip/LoadStatusChip'
 import { LOAD_STATUS_STYLE } from '../LoadStatusChip/loadStatusStyle'
+import { SegmentedControl } from '../SegmentedControl/SegmentedControl'
 import { round1 } from '../../../lib/numbers'
 import { LOAD_STATUS_LABEL, SPRINT_EXTENSION_DAYS, type LoadStatus } from '../../../lib/personMetrics'
 
@@ -10,6 +13,8 @@ const STATUS_ORDER: LoadStatus[] = ['overload', 'extension', 'above', 'within', 
 
 /** Listras dos segmentos "em andamento": ainda não entregue, só comprometido. */
 const STRIPES = 'bg-[repeating-linear-gradient(90deg,transparent_0_3px,rgb(255_255_255/0.35)_3px_5px)]'
+/** Listras diagonais do segmento "apoio": crédito pelo apoio a outras pessoas, não entrega própria. */
+const SUPPORT_STRIPES = 'bg-[repeating-linear-gradient(45deg,transparent_0_3px,rgb(255_255_255/0.45)_3px_5px)]'
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
@@ -43,13 +48,27 @@ export interface CapacityLoad {
   inProgressDelayedOnAllocatedSprints?: number
 }
 
-/** Uma frase com a leitura do status; com itens em aberto, deixa claro que o status soma tudo. */
-function summaryOf(load: CapacityLoad, unit: string, parts: { delivered: number; open: number }): string {
+/** O status "com apoio": mesmos totais somando o apoio à carga, e para quem foi o apoio. */
+export interface SupportLoad {
+  load: CapacityLoad
+  /** Pontos de apoio nas sprints com alocação. */
+  points: number
+  given: { personId: string; nome: string; points: number }[]
+}
+
+type LoadView = 'real' | 'support'
+
+const VIEW_OPTIONS: { value: LoadView; label: string }[] = [
+  { value: 'real', label: 'Real' },
+  { value: 'support', label: 'Com apoio' },
+]
+
+/** Uma frase com a leitura do status; com itens em aberto ou apoio, deixa claro que o status soma tudo. */
+function summaryOf(load: CapacityLoad, unit: string, parts: { delivered: number; open: number; support: number }): string {
   const total = load.deliveredOnAllocatedSprintsRaw
+  const extras = [parts.open > 0 ? `em andamento (${parts.open})` : '', parts.support > 0 ? `apoio (${parts.support})` : ''].filter(Boolean)
   const subject =
-    parts.open > 0
-      ? `Entregue (${parts.delivered}) + em andamento (${parts.open}) somam ${total} ${unit}`
-      : `Entregou ${total} ${unit}`
+    extras.length > 0 ? `Entregue (${parts.delivered}) + ${extras.join(' + ')} somam ${total} ${unit}` : `Entregou ${total} ${unit}`
   switch (load.loadStatus) {
     case 'below':
       return `${subject}, de ${load.capacity} previstos (${Math.round((total / load.capacity) * 100)}%).`
@@ -85,17 +104,24 @@ export interface CapacityLoadCardProps {
   /** Unidade da entrega: SP (dev) ou PE (QA, Pontos de Execução). */
   unit: string
   load: CapacityLoad
+  /** Com apoio a outras pessoas no período: os dois status lado a lado e a troca Real/Com apoio. */
+  support?: SupportLoad | null
 }
 
 // Painel "Entrega × previsto": status em palavras + frase de leitura, barra com o entregue e o
 // em andamento (atual e atrasado) separados, as marcas de Previsto e Máximo e a extensão de +3 dias
-// úteis acima do Máximo (a gordurinha), os números-chave e as sprints por situação.
-export function CapacityLoadCard({ label, info, unit, load }: CapacityLoadCardProps) {
+// úteis acima do Máximo (a gordurinha), os números-chave e as sprints por situação. Com apoio, mostra
+// o status real e o "com apoio" lado a lado e alterna o painel entre os dois.
+export function CapacityLoadCard({ label, info, unit, load: realLoad, support }: CapacityLoadCardProps) {
+  const [view, setView] = useState<LoadView>('real')
+  const showSupport = view === 'support' && !!support
+  const load = showSupport ? support.load : realLoad
+  const supportPoints = showSupport ? support.points : 0
   const status = load.loadStatus
   const total = load.deliveredOnAllocatedSprintsRaw
-  const inProgress = load.inProgressOnAllocatedSprints ?? 0
-  const inProgressDelayed = load.inProgressDelayedOnAllocatedSprints ?? 0
-  const delivered = round1(total - inProgress - inProgressDelayed)
+  const inProgress = realLoad.inProgressOnAllocatedSprints ?? 0
+  const inProgressDelayed = realLoad.inProgressDelayedOnAllocatedSprints ?? 0
+  const delivered = round1(total - inProgress - inProgressDelayed - supportPoints)
   const style = status ? STATUS_STYLE[status] : null
 
   // Escala com folga para a marca do Máximo nunca encostar na borda.
@@ -107,19 +133,34 @@ export function CapacityLoadCard({ label, info, unit, load }: CapacityLoadCardPr
   const limit = load.maxExtendedCapacity
   const deliveredEnd = Math.min(delivered, limit)
   const inProgressEnd = Math.min(delivered + inProgress, limit)
-  const delayedEnd = Math.min(total, limit)
+  const delayedEnd = Math.min(total - supportPoints, limit)
+  const supportEnd = Math.min(total, limit)
   const perSprint = (value: number) => (load.allocatedSprints > 0 ? round1(value / load.allocatedSprints) : 0)
 
   const deliveredSwatch = style ? clsx('opacity-90', style.fill) : ''
   const inProgressSwatch = style ? clsx('opacity-40', STRIPES, style.fill) : ''
   const delayedSwatch = clsx('opacity-60', STRIPES, 'bg-brand-action-alert')
+  const supportSwatch = style ? clsx('opacity-60', SUPPORT_STRIPES, style.fill) : ''
 
   return (
     <section className="min-w-0 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-4 sm:px-5">
-      <p className="flex items-center gap-1 text-xs font-medium text-[var(--text)]">
-        {label}
-        {info && <InfoTooltip label={label} text={info} />}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1 text-xs font-medium text-[var(--text)]">
+          {label}
+          {info && <InfoTooltip label={label} text={info} />}
+        </p>
+        {support && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text)]">
+            <span className="flex items-center gap-1">
+              Real <LoadStatusChip status={realLoad.loadStatus} />
+            </span>
+            <span className="flex items-center gap-1">
+              Com apoio <LoadStatusChip status={support.load.loadStatus} />
+            </span>
+            <SegmentedControl aria-label="Status considerado" options={VIEW_OPTIONS} value={view} onChange={setView} />
+          </div>
+        )}
+      </div>
 
       {!status || !style ? (
         <>
@@ -133,7 +174,7 @@ export function CapacityLoadCard({ label, info, unit, load }: CapacityLoadCardPr
               <style.icon size={22} aria-hidden="true" />
               {LOAD_STATUS_LABEL[status]}
             </p>
-            <p className="text-sm text-[var(--text-h)]">{summaryOf(load, unit, { delivered, open: inProgress + inProgressDelayed })}</p>
+            <p className="text-sm text-[var(--text-h)]">{summaryOf(load, unit, { delivered, open: inProgress + inProgressDelayed, support: supportPoints })}</p>
           </div>
 
           <div
@@ -142,6 +183,7 @@ export function CapacityLoadCard({ label, info, unit, load }: CapacityLoadCardPr
               `Entregue ${delivered} ${unit}`,
               inProgress > 0 ? `em andamento ${inProgress}` : '',
               inProgressDelayed > 0 ? `em andamento atrasado ${inProgressDelayed}` : '',
+              supportPoints > 0 ? `apoio ${supportPoints}` : '',
               `previsto ${load.capacity}`,
               `máximo ${load.maxCapacity}`,
               `máximo com extensão ${load.maxExtendedCapacity}`,
@@ -158,6 +200,7 @@ export function CapacityLoadCard({ label, info, unit, load }: CapacityLoadCardPr
             <div className={clsx('absolute inset-y-0 left-0 rounded-l-full', deliveredSwatch)} style={{ width: at(deliveredEnd) }} />
             {inProgressEnd > deliveredEnd && <div className={clsx('absolute inset-y-0', inProgressSwatch)} style={span(deliveredEnd, inProgressEnd)} />}
             {delayedEnd > inProgressEnd && <div className={clsx('absolute inset-y-0', delayedSwatch)} style={span(inProgressEnd, delayedEnd)} />}
+            {supportEnd > delayedEnd && <div className={clsx('absolute inset-y-0', supportSwatch)} style={span(delayedEnd, supportEnd)} />}
             {total > limit && <div className="absolute inset-y-0 rounded-r-full bg-brand-action-danger" style={span(limit, total)} />}
             <span className="absolute -inset-y-1 w-0.5 bg-[var(--text-h)]" style={{ left: at(load.capacity) }} />
             <span className="absolute -inset-y-1 border-l-2 border-dashed border-[var(--text-h)]" style={{ left: at(load.maxCapacity) }} />
@@ -178,6 +221,11 @@ export function CapacityLoadCard({ label, info, unit, load }: CapacityLoadCardPr
               />{' '}
               Extensão: +{SPRINT_EXTENSION_DAYS} dias úteis acima do máximo
             </span>
+            {supportPoints > 0 && (
+              <span className="flex items-center gap-1">
+                <span aria-hidden="true" className={clsx('inline-block h-2.5 w-3 rounded-sm', supportSwatch)} /> Apoio a outras pessoas
+              </span>
+            )}
             {total > limit && (
               <span className="flex items-center gap-1">
                 <span aria-hidden="true" className="inline-block h-2.5 w-3 rounded-sm bg-brand-action-danger" /> Acima até da extensão
@@ -227,6 +275,12 @@ export function CapacityLoadCard({ label, info, unit, load }: CapacityLoadCardPr
               </li>
             ))}
           </ul>
+
+          {support && support.given.length > 0 && (
+            <p className="mt-3 text-xs text-[var(--text-h)]">
+              Apoiou {support.given.map((g) => `${g.nome} (${g.points} ${unit})`).join(', ')}: {support.points} {unit} de apoio nas sprints com alocação.
+            </p>
+          )}
 
           {load.overloadPoints > 0 && (
             <p className="mt-3 rounded-r border-l-2 border-brand-action-danger bg-[var(--code-bg)] px-2 py-1 text-xs leading-snug text-[var(--text-h)]">

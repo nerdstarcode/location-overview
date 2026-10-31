@@ -6,6 +6,7 @@ import { loadLevels, saveLevels } from './levelsStorage'
 import { listKeys, readRaw, UI_STATE_PREFIX, writeRaw } from './localStore'
 import { loadPeople, savePeople } from './peopleStorage'
 import { loadPersonAllocations, savePersonAllocations } from './personAllocationsStorage'
+import { loadPersonSupports, savePersonSupports } from './personSupportsStorage'
 import { loadSprints, saveSprints } from './sprintsStorage'
 import { loadSquads, saveSquads } from './squadsStorage'
 import { loadTestExecutions, saveTestExecutions } from './testExecutionsStorage'
@@ -39,6 +40,7 @@ const DATA_SECTIONS: DataSection[] = [
   { key: 'squads', label: 'Squads', load: loadSquads, save: saveSquads },
   { key: 'sprints', label: 'Sprints', load: loadSprints, save: saveSprints },
   { key: 'personAllocations', label: 'Alocações por pessoa', load: loadPersonAllocations, save: savePersonAllocations },
+  { key: 'personSupports', label: 'Apoios entre pessoas', load: loadPersonSupports, save: savePersonSupports },
   { key: 'allocations', label: 'Alocação (planilha importada)', load: loadAllocations, save: saveAllocations },
   { key: 'workItems', label: 'Work Items', load: loadWorkItems, save: saveWorkItems },
   {

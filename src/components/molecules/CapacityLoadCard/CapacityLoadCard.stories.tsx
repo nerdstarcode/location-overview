@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, within } from 'storybook/test'
+import { expect, userEvent, within } from 'storybook/test'
 import { CapacityLoadCard, type CapacityLoad } from './CapacityLoadCard'
 
 const NO_SPRINTS: CapacityLoad['sprintStatusCounts'] = { below: 0, within: 0, above: 0, extension: 0, overload: 0 }
@@ -125,5 +125,25 @@ export const SemAlocacao: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await expect(canvas.getByText('Sem alocação nas sprints do filtro')).toBeInTheDocument()
+  },
+}
+
+// Apoiou outra pessoa: o real fica abaixo do previsto e o "com apoio" fica dentro, lado a lado.
+export const ComApoio: Story = {
+  args: {
+    load: load({ loadStatus: 'below', deliveredOnAllocatedSprintsRaw: 7, sprintStatusCounts: { ...NO_SPRINTS, below: 1 } }),
+    support: {
+      load: load({ loadStatus: 'within', deliveredOnAllocatedSprintsRaw: 10 }),
+      points: 3,
+      given: [{ personId: 'p2', nome: 'Alan Turing', points: 3 }],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByText('Entregou 7 SP, de 10 previstos (70%).')).toBeInTheDocument()
+    await expect(canvas.getByText(/Apoiou Alan Turing \(3 SP\)/)).toBeInTheDocument()
+    await userEvent.click(canvas.getByRole('button', { name: 'Com apoio' }))
+    await expect(canvas.getByText('Entregue (7) + apoio (3) somam 10 SP, em linha com os 10 previstos.')).toBeInTheDocument()
+    await expect(canvas.getByRole('img', { name: 'Entregue 7 SP; apoio 3; previsto 10; máximo 15; máximo com extensão 19.5' })).toBeInTheDocument()
   },
 }

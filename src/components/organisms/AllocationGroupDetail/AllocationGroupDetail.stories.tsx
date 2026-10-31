@@ -89,3 +89,22 @@ export const Vazio: Story = {
     await expect(canvas.getByRole('button', { name: 'Adicionar membros da squad (3)' })).toBeEnabled()
   },
 }
+
+// Apoios da sprint: selos na linha de quem apoia (com o crédito em SP) e de quem é apoiado, e o atalho por linha.
+export const ComApoio: Story = {
+  args: {
+    support: {
+      supports: [{ id: 'x1', supporterId: 'p1', supportedId: 'p2', sprintId: 's8', percentage: 25 }],
+      context: { allocations: FIXTURE_ALLOCATIONS, people: FIXTURE_PEOPLE, cargos: [] },
+      onAdd: fn(() => null),
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
+    await expect(canvas.getByText(/^Apoia Alan Turing \(25%\) · \+[\d.]+ SP$/)).toBeInTheDocument()
+    await expect(canvas.getByText('Apoiado por Ada Lovelace (25%)')).toBeInTheDocument()
+    await userEvent.click(canvas.getByRole('button', { name: 'Cadastrar apoio de Grace Hopper' }))
+    await expect(body.getByRole('dialog', { name: 'Apoio de Grace Hopper — Sprint 08 - FY25-26' })).toBeInTheDocument()
+  },
+}

@@ -4,6 +4,7 @@ import { loadCargos } from '../../lib/cargosStorage'
 import { loadLevels } from '../../lib/levelsStorage'
 import { loadPeople } from '../../lib/peopleStorage'
 import { loadPersonAllocations } from '../../lib/personAllocationsStorage'
+import { loadPersonSupports } from '../../lib/personSupportsStorage'
 import { compareSprintLabels, fiscalYearOfLabel, plannedSprintLabel, type DevAttribution } from '../../lib/personMetrics'
 import { formatSprintLabel, loadSprints } from '../../lib/sprintsStorage'
 import { loadSquads } from '../../lib/squadsStorage'
@@ -27,6 +28,7 @@ export function loadPersonDashboardBase() {
     executions: loadTestExecutions(),
     testReports: loadTestReports(),
     squads: loadSquads(),
+    supports: loadPersonSupports(),
   }
 }
 
