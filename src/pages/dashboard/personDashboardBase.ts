@@ -8,6 +8,7 @@ import { loadPersonSupports } from '../../lib/personSupportsStorage'
 import { compareSprintLabels, fiscalYearOfLabel, plannedSprintLabel, type DevAttribution } from '../../lib/personMetrics'
 import { formatSprintLabel, loadSprints } from '../../lib/sprintsStorage'
 import { loadSquads } from '../../lib/squadsStorage'
+import { loadTestCaseExecutions } from '../../lib/testCaseExecutionsStorage'
 import { loadTestExecutions } from '../../lib/testExecutionsStorage'
 import { loadTestReports } from '../../lib/testReportsStorage'
 import { loadWorkItems } from '../../lib/workItemsStorage'
@@ -26,6 +27,7 @@ export function loadPersonDashboardBase() {
     levels: loadLevels(),
     cargos: loadCargos(),
     executions: loadTestExecutions(),
+    testCaseExecutions: loadTestCaseExecutions(),
     testReports: loadTestReports(),
     squads: loadSquads(),
     supports: loadPersonSupports(),

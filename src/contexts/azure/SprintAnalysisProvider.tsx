@@ -21,8 +21,7 @@ import {
   withStateHistory,
   type SyncOutcome,
 } from '../../lib/azure/syncToBase'
-import { listTestResultsForRuns } from '../../lib/azure/api'
-import { summarizeResultsByPerson } from '../../lib/azure/mappers'
+import { relevantTestRuns, testRunResultSummaries } from '../../lib/azure/testRunResults'
 import { loadCargos } from '../../lib/cargosStorage'
 import { loadLevels } from '../../lib/levelsStorage'
 import { loadPeople } from '../../lib/peopleStorage'
@@ -124,12 +123,10 @@ export function SprintAnalysisProvider({ children }: { children: ReactNode }) {
   async function saveToBase(): Promise<SyncOutcome<SprintSyncResult>> {
     if (!team || !iteration) return { ok: false, reason: 'Sprint não encontrada neste team.' }
     if (!members.data || !workItems.data) return { ok: false, reason: 'Aguarde o carregamento dos dados da sprint.' }
-    let testExecutions
+    let results
     let withHistory
     try {
-      testExecutions = testRuns.data
-        ? summarizeResultsByPerson(await listTestResultsForRuns(config, projectId, testRuns.data))
-        : undefined
+      results = testRuns.data ? await testRunResultSummaries(config, projectId, relevantTestRuns(testRuns.data, iteration.path, config)) : undefined
       withHistory = await withStateHistory(config, workItems.data)
     } catch (error) {
       return { ok: false, reason: error instanceof Error ? error.message : String(error) }
@@ -140,7 +137,8 @@ export function SprintAnalysisProvider({ children }: { children: ReactNode }) {
       iteration,
       workItems: withHistory.rows,
       testRuns: metrics.testRuns,
-      testExecutions,
+      testExecutions: results?.persons,
+      testCaseExecutions: results?.testCases,
     })
     setLocalBase(loadLocalBase())
     return { ok: true, result: { ...result, stateHistoryError: withHistory.error } }

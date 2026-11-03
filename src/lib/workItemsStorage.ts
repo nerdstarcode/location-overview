@@ -7,15 +7,18 @@ export { getWorkItemKey }
 
 /**
  * Faz upsert de `incoming` sobre `existing` por ID: em caso de ID repetido, o registro importado por
- * último vence, mas mantém o histórico de estados já salvo quando o novo não traz (planilha).
+ * último vence, mas mantém o histórico de estados e os Test Cases ligados já salvos quando o novo
+ * não traz (planilha).
  */
 export function mergeWorkItems(existing: WorkItemRow[], incoming: WorkItemRow[]): WorkItemRow[] {
   const byKey = new Map<string, WorkItemRow>()
   for (const row of existing) byKey.set(getWorkItemKey(row), row)
   for (const row of incoming) {
     const key = getWorkItemKey(row)
-    const stateHistory = row.stateHistory ?? byKey.get(key)?.stateHistory
-    byKey.set(key, stateHistory ? { ...row, stateHistory } : row)
+    const previous = byKey.get(key)
+    const stateHistory = row.stateHistory ?? previous?.stateHistory
+    const testCaseIds = row.testCaseIds ?? previous?.testCaseIds
+    byKey.set(key, { ...row, ...(stateHistory && { stateHistory }), ...(testCaseIds && { testCaseIds }) })
   }
 
   return [...byKey.values()].sort((a, b) => a.id - b.id)

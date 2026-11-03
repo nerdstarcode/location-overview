@@ -4,6 +4,7 @@ import { loadSprints, saveSprints } from '../sprintsStorage'
 import { loadSquads, saveSquads } from '../squadsStorage'
 import { loadTestReports, saveTestReports } from '../testReportsStorage'
 import { loadWorkItems } from '../workItemsStorage'
+import { loadTestCaseExecutions } from '../testCaseExecutionsStorage'
 import { FIXTURE_ITERATION, FIXTURE_MEMBERS, FIXTURE_TEST_RUNS_SUMMARY, FIXTURE_WORK_ITEMS } from './sprintFixtures'
 import {
   syncSprintToBase,
@@ -73,9 +74,28 @@ describe('syncSprintToBase', () => {
       workItems: FIXTURE_WORK_ITEMS,
       testRuns: FIXTURE_TEST_RUNS_SUMMARY,
     })
-    expect(result).toEqual({ squadCreated: true, peopleCreated: 3, peopleLinked: 0, sprintCreated: true, workItems: 13, testReport: true, testExecutions: 0 })
+    expect(result).toEqual({ squadCreated: true, peopleCreated: 3, peopleLinked: 0, sprintCreated: true, workItems: 13, testReport: true, testExecutions: 0, testCases: 0 })
     expect(loadWorkItems()).toHaveLength(13)
     expect(loadSprints()[0].totalValidDays).toBe(10)
+  })
+
+  it('grava as execuções por Test Case da sprint', () => {
+    const result = syncSprintToBase({
+      teamName: 'Portal',
+      members: [],
+      iteration: FIXTURE_ITERATION,
+      workItems: [],
+      testRuns: null,
+      testCaseExecutions: [
+        { testCaseId: 501, email: 'grace@example.com', name: 'Grace', executed: 2, passed: 1, failed: 1 },
+        { testCaseId: 501, email: '', name: '', executed: 1, passed: 1, failed: 0 },
+      ],
+    })
+    expect(result.testCases).toBe(1)
+    expect(loadTestCaseExecutions()).toEqual([
+      expect.objectContaining({ testCaseId: 501, email: 'grace@example.com', executed: 2 }),
+      expect.objectContaining({ testCaseId: 501, email: '', executed: 1 }),
+    ])
   })
 
   it('não grava relatório de testes sem runs', () => {

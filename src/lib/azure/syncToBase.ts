@@ -4,21 +4,25 @@ import { loadPeople, savePeople, type Person } from '../peopleStorage'
 import { DEFAULT_TOTAL_VALID_DAYS, loadSprints, upsertSprint, type Sprint } from '../sprintsStorage'
 import { loadSquads, upsertSquad, type Squad } from '../squadsStorage'
 import { squadMatchesName } from '../squadMatching'
+import { replaceTestCaseExecutions } from '../testCaseExecutionsStorage'
 import { replaceTestExecutions } from '../testExecutionsStorage'
 import { DEFAULT_TEST_POINTS_RATIO, loadTestReports, upsertTestReport } from '../testReportsStorage'
 import { normalizeKey } from '../text'
-import type { WorkItemRow } from '../workItems'
+import { QA_ITEM_TYPES } from '../personMetrics'
+import type { StateChange, WorkItemRow } from '../workItems'
 import { loadWorkItems, mergeWorkItems, saveWorkItems } from '../workItemsStorage'
-import { getIterationWorkItems, getWorkItemsStateHistory, listTestResultsForRuns, listTestRuns } from './api'
+import { getIterationWorkItems, getWorkItemsStateHistory, listTestRuns } from './api'
+import { relevantTestRuns, testRunResultSummaries } from './testRunResults'
 import type { AzureConfig } from './azureConfigStorage'
 import { isAbortError } from './client'
+import { isPointItem } from './sprintMetrics'
 import {
   azureWorkItemToRow,
   iterationSprintInfo,
-  summarizeResultsByPerson,
   summarizeTestRuns,
   testRunsToReportFields,
   type PersonTestSummary,
+  type TestCaseRunSummary,
   type TestRunsSummary,
 } from './mappers'
 import type { AzureIteration, AzureTeamMember } from './types'
@@ -144,6 +148,8 @@ export interface SprintSyncInput {
   testRuns: TestRunsSummary | null
   /** Testes executados por pessoa; undefined quando os test results não foram buscados. */
   testExecutions?: PersonTestSummary[]
+  /** Execuções por Test Case e pessoa (base das execuções por story point); idem. */
+  testCaseExecutions?: TestCaseRunSummary[]
 }
 
 export interface SprintSyncResult {
@@ -156,12 +162,43 @@ export interface SprintSyncResult {
   testReport: boolean
   /** Pessoas com testes executados gravadas para a sprint. */
   testExecutions: number
+  /** Test Cases com execução gravados para a sprint. */
+  testCases: number
   /** Motivo de o histórico de estados não ter vindo (os itens foram gravados sem ele). */
   stateHistoryError?: string
 }
 
+/** Tipos com evolução por item: os de pontos e os de QA (Test Case / Test Plan). Tasks ficam de fora. */
+export function needsStateHistory(row: WorkItemRow, config: AzureConfig): boolean {
+  return isPointItem(row, config.pointTypes) || QA_ITEM_TYPES.some((type) => normalizeKey(type) === normalizeKey(row.workItemType))
+}
+
 /**
- * Junta a cada item o histórico de State (para o fluxo Active → Testing → Done). Se a busca falhar,
+ * Histórico de State de cada item que precisa dele (`needsStateHistory`), com o mínimo de pedidos ao
+ * Azure: o histórico já salvo é reaproveitado quando a revisão do item não mudou desde a última
+ * sincronização, e só os demais são buscados (um pedido por item).
+ */
+export async function stateHistoriesFor(
+  config: AzureConfig,
+  rows: WorkItemRow[],
+  signal?: AbortSignal,
+  saved: WorkItemRow[] = loadWorkItems(),
+): Promise<Map<number, StateChange[]>> {
+  const savedById = new Map(saved.map((row) => [row.id, row]))
+  const history = new Map<number, StateChange[]>()
+  const toFetch: number[] = []
+  for (const row of rows) {
+    if (!needsStateHistory(row, config)) continue
+    const previous = savedById.get(row.id)
+    if (previous?.stateHistory && row.rev !== undefined && previous.rev === row.rev) history.set(row.id, previous.stateHistory)
+    else toFetch.push(row.id)
+  }
+  for (const [id, changes] of await getWorkItemsStateHistory(config, toFetch, signal)) history.set(id, changes)
+  return history
+}
+
+/**
+ * Junta a cada item o histórico de State (para a evolução Active → Testing → Done). Se a busca falhar,
  * devolve os itens sem histórico e o motivo, para a sincronização seguir; o cancelamento propaga.
  */
 export async function withStateHistory(
@@ -170,7 +207,7 @@ export async function withStateHistory(
   signal?: AbortSignal,
 ): Promise<{ rows: WorkItemRow[]; error?: string }> {
   try {
-    const history = await getWorkItemsStateHistory(config, rows.map((row) => row.id), signal)
+    const history = await stateHistoriesFor(config, rows, signal)
     return { rows: rows.map((row) => ({ ...row, stateHistory: history.get(row.id) ?? row.stateHistory })) }
   } catch (error) {
     if (isAbortError(error) || signal?.aborted) throw error
@@ -190,6 +227,12 @@ function syncTestExecutions(squadId: string, sprint: Sprint | undefined, executi
   return executions.length
 }
 
+function syncTestCaseExecutions(squadId: string, sprint: Sprint | undefined, executions: TestCaseRunSummary[] | undefined): number {
+  if (!sprint || !executions) return 0
+  replaceTestCaseExecutions(squadId, sprint.id, executions)
+  return new Set(executions.map((e) => e.testCaseId)).size
+}
+
 export function syncSprintToBase(input: SprintSyncInput): SprintSyncResult {
   const { squad, created: squadCreated } = upsertSquadByName(input.teamName)
   const people = upsertPeopleFromTeam(squad.id, input.members)
@@ -202,6 +245,7 @@ export function syncSprintToBase(input: SprintSyncInput): SprintSyncResult {
     workItems: upsertWorkItems(input.workItems),
     testReport: syncTestReport(squad.id, sprintResult?.sprint, input.testRuns),
     testExecutions: syncTestExecutions(squad.id, sprintResult?.sprint, input.testExecutions),
+    testCases: syncTestCaseExecutions(squad.id, sprintResult?.sprint, input.testCaseExecutions),
   }
 }
 
@@ -229,12 +273,13 @@ async function fetchIterationTests(
   project: string,
   iteration: AzureIteration,
   signal?: AbortSignal,
-): Promise<{ testRuns: TestRunsSummary | null; testExecutions?: PersonTestSummary[] }> {
+): Promise<{ testRuns: TestRunsSummary | null; testExecutions?: PersonTestSummary[]; testCaseExecutions?: TestCaseRunSummary[] }> {
   const { startDate, finishDate } = iteration.attributes
   if (!startDate || !finishDate) return { testRuns: null }
   const runs = await listTestRuns(config, project, startDate, finishDate, signal)
-  const results = await listTestResultsForRuns(config, project, runs, signal)
-  return { testRuns: summarizeTestRuns(runs), testExecutions: summarizeResultsByPerson(results) }
+  // O resumo da sprint conta todos os runs; os resultados (um pedido por run) só dos que a configuração inclui.
+  const results = await testRunResultSummaries(config, project, relevantTestRuns(runs, iteration.path, config), signal)
+  return { testRuns: summarizeTestRuns(runs), testExecutions: results.persons, testCaseExecutions: results.testCases }
 }
 
 /**

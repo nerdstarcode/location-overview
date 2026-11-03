@@ -20,11 +20,14 @@ import { stateRank } from '../../../lib/stateColors'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { ChartCard } from '../../molecules/ChartCard/ChartCard'
 import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
+import { TestExecutionsPerPoint } from '../TestExecutionsPerPoint/TestExecutionsPerPoint'
 import { WorkItemDetailsModal } from '../WorkItemDetailsModal/WorkItemDetailsModal'
 import { loadAzureConfig } from '../../../lib/azure/azureConfigStorage'
 import { isPointItem } from '../../../lib/azure/sprintMetrics'
 import { delayInfo } from '../../../lib/personMetrics'
 import { itemTimelines } from '../../../lib/stateFlow'
+import { loadTestCaseExecutions, type TestCaseExecution } from '../../../lib/testCaseExecutionsStorage'
+import { itemExecutions } from '../../../lib/testExecutionsPerPoint'
 
 export interface WorkItemsDashboardProps {
   /** Uso reservado a Storybook/testes: quando informado, ignora o localStorage. */
@@ -46,6 +49,8 @@ export interface WorkItemsDashboardProps {
   storageKey?: string
   /** Fixa o filtro de Squad (Dashboard por Squad); o MultiSelect de Squad deixa de aparecer. */
   squadName?: string
+  /** Mostra as execuções de teste por story point (aba QA): itens de pontos × Test Cases ligados. */
+  showTestExecutions?: boolean
 }
 
 
@@ -85,6 +90,9 @@ function buildFilterFields(squads: Squad[]): FilterFieldDef[] {
   { field: 'fiscalYear', label: 'Fiscal Year', getValues: (row) => [row.fiscalYear] },
   ]
 }
+
+/** Filtros que também valem para as execuções por SP (os demais descrevem os Test Cases da aba). */
+const TEST_EXECUTION_FILTERS = new Set(['squad', 'sprint', 'fiscalYear', 'iterationPath'])
 
 function countBy(rows: WorkItemRow[], field: 'workItemType' | 'state'): [string, number][] {
   const counts = new Map<string, number>()
@@ -249,6 +257,7 @@ export function WorkItemsDashboard({
   cargoTipo,
   storageKey,
   squadName,
+  showTestExecutions = false,
 }: WorkItemsDashboardProps) {
   // Base completa (o detalhe do item precisa achar pai e Tasks) e o recorte por tipo da aba.
   const [allRows] = useState<WorkItemRow[]>(() => initialRows ?? loadWorkItems())
@@ -270,6 +279,7 @@ export function WorkItemsDashboard({
   const [testReportsCatalog] = useState<TestReport[]>(loadTestReports)
   const [pointTypes] = useState<string[]>(() => loadAzureConfig().pointTypes)
   const [openRow, setOpenRow] = useState<WorkItemRow | null>(null)
+  const [testCaseRuns] = useState<TestCaseExecution[]>(loadTestCaseExecutions)
   const [executionMetric, setExecutionMetric] = useState<ExecutionMetric>('execucao')
   const { theme, palette, paletteBorder, tooltipStyle, stateColors: stateColorsFor } = useChartTheme()
   const colorblind = useColorblindMode()
@@ -343,6 +353,29 @@ export function WorkItemsDashboard({
   const timelines = useMemo(
     () => itemTimelines(allowedTypes ? filteredRows : filteredRows.filter((row) => isPointItem(row, pointTypes))),
     [filteredRows, allowedTypes, pointTypes],
+  )
+
+  // Execuções por SP: os itens de pontos da base (não os Test Cases da aba), só com os filtros de
+  // contexto (squad, sprint, ano, iteration); os de item (tipo, state, responsável) são dos Test Cases.
+  const testExecutions = useMemo(() => {
+    if (!showTestExecutions) return null
+    const active = filterFields
+      .filter((def) => TEST_EXECUTION_FILTERS.has(def.field))
+      .map((def) => ({ def, values: filters[def.field] ?? [] }))
+      .filter(({ values }) => values.length > 0)
+    const pointRows = allRows.filter(
+      (row) => isPointItem(row, pointTypes) && active.every(({ def, values }) => def.getValues(row).some((value) => values.includes(value))),
+    )
+    return itemExecutions(pointRows, testCaseRuns)
+  }, [showTestExecutions, filterFields, filters, allRows, pointTypes, testCaseRuns])
+  const testExecutionsCard = testExecutions && <TestExecutionsPerPoint items={testExecutions} onOpenItem={setOpenRow} />
+  const detailsModal = (
+    <WorkItemDetailsModal
+      row={openRow}
+      delay={openRow ? delayInfo(openRow, new Map(sprintsCatalog.map((sprint) => [formatSprintLabel(sprint), sprint]))) : undefined}
+      allRows={allRows}
+      onClose={() => setOpenRow(null)}
+    />
   )
 
   function handleFilterChange(field: string, values: string[]) {
@@ -552,11 +585,15 @@ export function WorkItemsDashboard({
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-md border border-[var(--border)] p-10 text-center">
-        <p className="text-sm text-[var(--text)]">
-          {emptyMessage ??
-            'Nenhum work item importado. Importe dados na página de Work Items para visualizar o dashboard.'}
-        </p>
+      <div className="flex w-full flex-col gap-4">
+        <div className="rounded-md border border-[var(--border)] p-10 text-center">
+          <p className="text-sm text-[var(--text)]">
+            {emptyMessage ??
+              'Nenhum work item importado. Importe dados na página de Work Items para visualizar o dashboard.'}
+          </p>
+        </div>
+        {testExecutionsCard}
+        {detailsModal}
       </div>
     )
   }
@@ -616,14 +653,11 @@ export function WorkItemsDashboard({
         <div className="lg:col-span-2">
           <ItemStateTimeline timelines={timelines} sprints={sprintsCatalog} onOpenItem={setOpenRow} />
         </div>
+
+        {testExecutionsCard && <div className="lg:col-span-2">{testExecutionsCard}</div>}
       </div>
 
-      <WorkItemDetailsModal
-        row={openRow}
-        delay={openRow ? delayInfo(openRow, new Map(sprintsCatalog.map((sprint) => [formatSprintLabel(sprint), sprint]))) : undefined}
-        allRows={allRows}
-        onClose={() => setOpenRow(null)}
-      />
+      {detailsModal}
     </div>
   )
 }

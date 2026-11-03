@@ -9,10 +9,13 @@ import { Chip } from '../../atoms/Chip/Chip'
 import { DataTable } from '../DataTable/DataTable'
 import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
 import { SupportByPersonChart } from '../SupportByPersonChart/SupportByPersonChart'
+import { TestExecutionsPerPoint } from '../TestExecutionsPerPoint/TestExecutionsPerPoint'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
 import { DELAY_REASON_LABEL, type PersonQaItem, type PersonQaMetrics } from '../../../lib/personMetrics'
 import type { ItemTimeline } from '../../../lib/stateFlow'
+import type { ItemExecutions } from '../../../lib/testExecutionsPerPoint'
+import type { WorkItemRow } from '../../../lib/workItems'
 import type { Sprint } from '../../../lib/sprintsStorage'
 import type { PersonSupportView } from '../../../lib/supportMetrics'
 
@@ -36,11 +39,15 @@ export interface PersonQaDashboardProps {
   support?: PersonSupportView | null
   /** Evolução de cada item da pessoa (Active → Testing QA → Testing Prod → Done). */
   timelines?: ItemTimeline[]
+  /** Itens de pontos em que a pessoa executou Test Cases ligados (execuções por story point). */
+  testExecutions?: ItemExecutions[]
+  /** Abre o detalhe de um work item que não é um Test Case da pessoa (ex.: a User Story testada). */
+  onOpenWorkItem?: (row: WorkItemRow) => void
   /** Sprints cadastradas, para marcar início e fim na evolução por item. */
   sprints?: Sprint[]
 }
 
-export function PersonQaDashboard({ metrics, onOpenItem, support, timelines, sprints: registeredSprints }: PersonQaDashboardProps) {
+export function PersonQaDashboard({ metrics, onOpenItem, support, timelines, sprints: registeredSprints, testExecutions, onOpenWorkItem }: PersonQaDashboardProps) {
   const chart = useChartTheme()
   const { sprints } = metrics
   const supportBySprint = support?.bySprint
@@ -218,6 +225,15 @@ export function PersonQaDashboard({ metrics, onOpenItem, support, timelines, spr
       </ChartCard>
 
       {hasSupport && supportBySprint && <SupportByPersonChart sprintLabels={sprints.map((s) => s.label)} bySprint={supportBySprint} unit="SP" />}
+
+      {testExecutions && (
+        <TestExecutionsPerPoint
+          items={testExecutions}
+          description="Itens de pontos (User Story, Bug, Enabler) cujos Test Cases ligados (Tested By) a pessoa executou, com as execuções dela e a média por story point."
+          emptyMessage="A pessoa não executou nenhum Test Case ligado a itens de pontos nas sprints do filtro. Os links Tested By e os test results vêm na sincronização das sprints."
+          onOpenItem={onOpenWorkItem}
+        />
+      )}
 
       {timelines && (
         <ItemStateTimeline

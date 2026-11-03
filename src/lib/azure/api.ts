@@ -102,7 +102,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 // Sem `fields` de propósito: pedir um campo que não existe no processo da organização
-// (ex.: Effort no Agile) derruba a chamada inteira; o mapper escolhe os campos depois.
+// (ex.: Effort no Agile) derruba a chamada inteira; o mapper escolhe os campos depois. As
+// relações vêm junto para saber os Test Cases ligados (Tested By) a cada item.
 async function getWorkItemsBatch(
   config: AzureConfig,
   project: string,
@@ -113,7 +114,7 @@ async function getWorkItemsBatch(
   for (const batch of chunk(ids, WORK_ITEMS_BATCH_SIZE)) {
     const { value } = await azureFetch<{ value: AzureWorkItem[] }>(config, `${seg(project)}/_apis/wit/workitemsbatch`, {
       method: 'POST',
-      body: { ids: batch, errorPolicy: 'omit' },
+      body: { ids: batch, errorPolicy: 'omit', $expand: 'Relations' },
       signal,
     })
     items.push(...value.filter(Boolean))
@@ -197,18 +198,6 @@ export async function listTestRunResults(
     results.push(...value)
     if (value.length < TEST_RESULTS_PAGE_SIZE) return results
   }
-}
-
-/** Resultados de todos os runs, um run por vez. */
-export async function listTestResultsForRuns(
-  config: AzureConfig,
-  project: string,
-  runs: AzureTestRun[],
-  signal?: AbortSignal,
-): Promise<AzureTestResult[]> {
-  const results: AzureTestResult[] = []
-  for (const run of runs) results.push(...(await listTestRunResults(config, project, run.id, signal)))
-  return results
 }
 
 export async function getWorkItemUpdates(config: AzureConfig, id: number, signal?: AbortSignal): Promise<AzureWorkItemUpdate[]> {

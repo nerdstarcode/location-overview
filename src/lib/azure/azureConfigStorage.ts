@@ -13,6 +13,10 @@ export interface AzureConfig {
   qaMaxPercent: number
   /** Tasks/Test Cases ficam fora por padrão para não somar em dobro com a User Story. */
   pointTypes: string[]
+  /** Busca os resultados também dos runs marcados como automatizados (um pedido a mais por run). */
+  testRunsIncludeAutomated: boolean
+  /** Busca os resultados só dos runs com a iteration dentro da sprint do time. */
+  testRunsOnlySprintIteration: boolean
 }
 
 export const DEFAULT_AZURE_CONFIG: AzureConfig = {
@@ -23,6 +27,8 @@ export const DEFAULT_AZURE_CONFIG: AzureConfig = {
   qaMinPercent: 20,
   qaMaxPercent: 30,
   pointTypes: ['User Story', 'Bug', 'Enabler'],
+  testRunsIncludeAutomated: false,
+  testRunsOnlySprintIteration: true,
 }
 
 // O backup (backupStorage) leva esta configuração sem o PAT e, ao importar, mantém o PAT já salvo.

@@ -51,6 +51,16 @@ function resolveClosedDate(item: AzureWorkItem, state: string): string | undefin
   )
 }
 
+const TESTED_BY = 'Microsoft.VSTS.Common.TestedBy-Forward'
+
+/** Ids dos Test Cases ligados ao item pelo link "Tested By". */
+export function testedByIds(item: AzureWorkItem): number[] {
+  return (item.relations ?? [])
+    .filter((relation) => relation.rel === TESTED_BY)
+    .map((relation) => Number(relation.url.match(/workItems\/(\d+)$/i)?.[1]))
+    .filter((id) => Number.isInteger(id) && id > 0)
+}
+
 export function azureWorkItemToRow(item: AzureWorkItem, config: AzureConfig): WorkItemRow {
   const row = buildWorkItemRow({
     id: item.id,
@@ -66,10 +76,13 @@ export function azureWorkItemToRow(item: AzureWorkItem, config: AzureConfig): Wo
     wsjf: fieldOrSuffix(item, config.wsjfField, 'WSJF'),
   })
   const parent = item.fields['System.Parent']
+  const testCaseIds = testedByIds(item)
   return {
     ...row,
     parentId: typeof parent === 'number' ? parent : undefined,
     closedDate: resolveClosedDate(item, row.state),
+    rev: item.rev,
+    ...(testCaseIds.length > 0 && { testCaseIds }),
   }
 }
 
@@ -167,6 +180,67 @@ export function summarizeResultsByPerson(results: AzureTestResult[]): PersonTest
     byEmail.set(key, entry)
   }
   return [...byEmail.values()].sort((a, b) => b.executed - a.executed || a.name.localeCompare(b.name))
+}
+
+/** Execuções de um Test Case por uma pessoa (quem rodou; vazio nos automatizados sem runBy). */
+export interface TestCaseRunSummary {
+  testCaseId: number
+  email: string
+  name: string
+  executed: number
+  passed: number
+  failed: number
+}
+
+/** Resultados executados agrupados por Test Case e pessoa (mesma regra de "executado" do resumo por pessoa). */
+export function summarizeResultsByTestCase(results: AzureTestResult[]): TestCaseRunSummary[] {
+  const byKey = new Map<string, TestCaseRunSummary>()
+  for (const result of results) {
+    const outcome = (result.outcome ?? '').toLowerCase()
+    const testCaseId = Number(result.testCase?.id)
+    if (NOT_EXECUTED_OUTCOMES.has(outcome) || !Number.isInteger(testCaseId) || testCaseId <= 0) continue
+    const identity = result.runBy ?? result.owner
+    const email = identity?.uniqueName?.trim() ?? ''
+    const key = `${testCaseId}|${email.toLowerCase()}`
+    const entry = byKey.get(key) ?? { testCaseId, email, name: identity?.displayName?.trim() ?? '', executed: 0, passed: 0, failed: 0 }
+    entry.executed += 1
+    if (outcome === 'passed') entry.passed += 1
+    else if (FAILED_OUTCOMES.has(outcome)) entry.failed += 1
+    byKey.set(key, entry)
+  }
+  return [...byKey.values()].sort((a, b) => a.testCaseId - b.testCaseId || a.email.localeCompare(b.email))
+}
+
+/** Soma resumos por pessoa de vários runs (mesma pessoa = mesmo email). */
+export function mergePersonTestSummaries(summaries: PersonTestSummary[]): PersonTestSummary[] {
+  const byEmail = new Map<string, PersonTestSummary>()
+  for (const summary of summaries) {
+    const key = summary.email.toLowerCase()
+    const entry = byEmail.get(key)
+    byEmail.set(
+      key,
+      entry
+        ? { ...entry, executed: entry.executed + summary.executed, passed: entry.passed + summary.passed, failed: entry.failed + summary.failed, other: entry.other + summary.other }
+        : { ...summary },
+    )
+  }
+  return [...byEmail.values()].sort((a, b) => b.executed - a.executed || a.name.localeCompare(b.name))
+}
+
+/** Soma resumos por Test Case e pessoa de vários runs. */
+export function mergeTestCaseRunSummaries(summaries: TestCaseRunSummary[]): TestCaseRunSummary[] {
+  const byKey = new Map<string, TestCaseRunSummary>()
+  for (const summary of summaries) {
+    const key = `${summary.testCaseId}|${summary.email.toLowerCase()}`
+    const entry = byKey.get(key)
+    byKey.set(
+      key,
+      entry
+        ? { ...entry, executed: entry.executed + summary.executed, passed: entry.passed + summary.passed, failed: entry.failed + summary.failed }
+        : { ...summary },
+    )
+  }
+  return [...byKey.values()].sort((a, b) => a.testCaseId - b.testCaseId || a.email.localeCompare(b.email))
 }
 
 // ---------------------------------------------------------------------------

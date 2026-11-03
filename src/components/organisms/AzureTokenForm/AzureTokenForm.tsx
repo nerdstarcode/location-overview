@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { CheckCircle2, Eye, EyeOff } from 'lucide-react'
 import { TextField } from '../../molecules/TextField/TextField'
 import { Button } from '../../atoms/Button/Button'
+import { Checkbox } from '../../atoms/Checkbox/Checkbox'
 import type { AzureConfig } from '../../../lib/azure/azureConfigStorage'
 
 export interface AzureTokenFormProps {
@@ -24,6 +25,8 @@ function toDraft(config: AzureConfig) {
     qaMinPercent: String(config.qaMinPercent),
     qaMaxPercent: String(config.qaMaxPercent),
     pointTypes: config.pointTypes.join(', '),
+    testRunsIncludeAutomated: config.testRunsIncludeAutomated,
+    testRunsOnlySprintIteration: config.testRunsOnlySprintIteration,
   }
 }
 
@@ -47,6 +50,8 @@ function draftToConfig(draft: Draft, fallback: AzureConfig): AzureConfig {
     qaMinPercent: Number(draft.qaMinPercent),
     qaMaxPercent: Number(draft.qaMaxPercent),
     pointTypes: parsePointTypes(draft.pointTypes),
+    testRunsIncludeAutomated: draft.testRunsIncludeAutomated,
+    testRunsOnlySprintIteration: draft.testRunsOnlySprintIteration,
   }
 }
 
@@ -154,6 +159,40 @@ export function AzureTokenForm({ initialConfig, onSave, onTest, onClear }: Azure
           helperText={qaRangeInvalid ? 'Faixa inválida: use valores de 0 a 100 com mínimo ≤ máximo.' : undefined}
         />
       </div>
+
+      <fieldset className="flex flex-col gap-2 rounded-md border border-[var(--border)] p-3">
+        <legend className="px-1 text-sm font-medium text-[var(--text-h)]">Test runs nas execuções de teste</legend>
+        <p className="text-xs text-[var(--text)]">
+          Quais runs têm os resultados buscados (um pedido por run) para as execuções por pessoa e por story point. O resumo de
+          runs da sprint sempre conta todos.
+        </p>
+        <label className="flex items-start gap-2 text-sm text-[var(--text-h)]">
+          <Checkbox
+            className="mt-0.5"
+            checked={draft.testRunsIncludeAutomated}
+            onChange={(e) => setDraft({ ...draft, testRunsIncludeAutomated: e.target.checked })}
+          />
+          <span>
+            Incluir runs automatizados
+            <span className="block text-xs text-[var(--text)]">
+              Para quando os testes executados não estão marcados como manuais. Com pipelines, pode haver muitos runs.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm text-[var(--text-h)]">
+          <Checkbox
+            className="mt-0.5"
+            checked={draft.testRunsOnlySprintIteration}
+            onChange={(e) => setDraft({ ...draft, testRunsOnlySprintIteration: e.target.checked })}
+          />
+          <span>
+            Só runs da iteration da sprint do time
+            <span className="block text-xs text-[var(--text)]">
+              Desmarque se os runs não têm a sprint como iteration (comum em runs de pipeline): entram todos os runs do projeto iniciados na sprint.
+            </span>
+          </span>
+        </label>
+      </fieldset>
 
       {feedback && (
         <p

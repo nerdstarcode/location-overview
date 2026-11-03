@@ -29,6 +29,10 @@ export interface WorkItemRow {
   closedDate?: string
   /** Cada mudança de State (com a data), em ordem; vem do histórico do item na sincronização. */
   stateHistory?: StateChange[]
+  /** Test Cases ligados ao item pelo link "Tested By" (só pela sincronização). */
+  testCaseIds?: number[]
+  /** Revisão do item no Azure na sincronização: igual à salva = item não mudou (reaproveita o histórico). */
+  rev?: number
 }
 
 export interface StateChange {

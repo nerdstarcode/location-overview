@@ -9,6 +9,7 @@ import { loadPersonAllocations, savePersonAllocations } from './personAllocation
 import { loadPersonSupports, savePersonSupports } from './personSupportsStorage'
 import { loadSprints, saveSprints } from './sprintsStorage'
 import { loadSquads, saveSquads } from './squadsStorage'
+import { loadTestCaseExecutions, saveTestCaseExecutions } from './testCaseExecutionsStorage'
 import { loadTestExecutions, saveTestExecutions } from './testExecutionsStorage'
 import { loadTestReports, saveTestReports } from './testReportsStorage'
 import { loadWorkItems, saveWorkItems } from './workItemsStorage'
@@ -52,6 +53,7 @@ const DATA_SECTIONS: DataSection[] = [
   },
   { key: 'testReports', label: 'Relatórios de teste', load: loadTestReports, save: saveTestReports },
   { key: 'testExecutions', label: 'Execuções de teste por pessoa', load: loadTestExecutions, save: saveTestExecutions },
+  { key: 'testCaseExecutions', label: 'Execuções por Test Case', load: loadTestCaseExecutions, save: saveTestCaseExecutions },
 ]
 
 /** Configuração do Azure que vai no arquivo: tudo menos o token (PAT). */

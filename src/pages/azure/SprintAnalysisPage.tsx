@@ -16,8 +16,11 @@ import { ItemStateTimeline } from '../../components/organisms/ItemStateTimeline/
 import { StateFlowTable } from '../../components/organisms/StateFlowTable/StateFlowTable'
 import { WorkItemDetailsModal } from '../../components/organisms/WorkItemDetailsModal/WorkItemDetailsModal'
 import { useAzureRequest } from '../../hooks/azure/useAzureRequest'
-import { getWorkItemsStateHistory } from '../../lib/azure/api'
+import { stateHistoriesFor } from '../../lib/azure/syncToBase'
 import { iterationSprintInfo } from '../../lib/azure/mappers'
+import { relevantTestRuns, testRunResultSummaries } from '../../lib/azure/testRunResults'
+import { itemExecutions } from '../../lib/testExecutionsPerPoint'
+import { TestExecutionsPerPoint } from '../../components/organisms/TestExecutionsPerPoint/TestExecutionsPerPoint'
 import { isPointItem } from '../../lib/azure/sprintMetrics'
 import { itemFlows, itemTimelines } from '../../lib/stateFlow'
 import type { WorkItemRow } from '../../lib/workItems'
@@ -42,6 +45,7 @@ function describeSync(outcome: SyncOutcome<SprintSyncResult>): string {
       : `sprint ${result.sprintCreated ? 'criada' : 'atualizada'}`,
     result.testReport ? 'relatório de testes atualizado' : 'sem test runs para o relatório',
     `${result.testExecutions} pessoa(s) com testes executados`,
+    `${result.testCases} Test Case(s) com execução`,
     result.stateHistoryError ? `sem histórico de estados (${result.stateHistoryError})` : 'histórico de estados gravado',
   ]
   return `Base atualizada: ${parts.join(' · ')}.`
@@ -68,6 +72,69 @@ function TestRunsSection() {
  * Fluxo de estados da sprint ao vivo: busca o histórico de cada item de pontos só quando pedido
  * (um pedido por item no Azure) e mostra o resumo e a tabela item a item.
  */
+/**
+ * Execuções de teste por story point da sprint ao vivo: busca os test results dos runs da sprint só
+ * quando pedido e soma, em cada item de pontos, as execuções dos Test Cases ligados (Tested By).
+ */
+function TestExecutionsSection() {
+  const { config } = useAzureConfig()
+  const { projectId, iteration, workItems, testRuns, hiddenIds } = useSprintAnalysis()
+  const [requested, setRequested] = useState(false)
+  const [openRow, setOpenRow] = useState<WorkItemRow | null>(null)
+
+  const rows = useMemo(
+    () => (workItems.data ?? []).filter((row) => !hiddenIds.has(row.id) && isPointItem(row, config.pointTypes)),
+    [workItems.data, hiddenIds, config.pointTypes],
+  )
+  // Os runs que a configuração inclui (por padrão, os manuais da sprint do time): a mesma regra da sincronização.
+  const runs = useMemo(
+    () => (iteration && testRuns.data ? relevantTestRuns(testRuns.data, iteration.path, config) : []),
+    [iteration, testRuns.data, config],
+  )
+  const results = useAzureRequest(
+    requested && runs.length > 0
+      ? {
+          key: `test-case-results|${projectId}|${runs.map((run) => run.id).join(',')}`,
+          fetch: (cfg, signal) => testRunResultSummaries(cfg, projectId, runs, signal),
+        }
+      : null,
+  )
+  const items = useMemo(() => (results.data ? itemExecutions(rows, results.data.testCases) : null), [results.data, rows])
+
+  if (!items) {
+    return (
+      <ChartCard
+        title="Execuções de teste por story point"
+        description="Quantas execuções de teste cada item teve pelos Test Cases ligados a ele (Tested By) e a média por story point. Busca os test results dos runs da sprint no Azure."
+      >
+        {requested ? (
+          <RequestState
+            loading={results.loading}
+            error={results.error}
+            empty={!results.loading && !results.error}
+            emptyMessage="Sem test runs nesta sprint."
+            loadingMessage={`Buscando os resultados de ${runs.length} test run(s)…`}
+            onRetry={results.reload}
+          />
+        ) : (
+          <Button type="button" variant="secondary" disabled={runs.length === 0} onClick={() => setRequested(true)}>
+            {runs.length > 0
+              ? `Carregar execuções (${runs.length} test runs)`
+              : 'Nenhum test run com o filtro da configuração do Azure (automatizados / iteration da sprint)'}
+          </Button>
+        )}
+      </ChartCard>
+    )
+  }
+
+  return (
+    <>
+      <TestExecutionsPerPoint items={items} onOpenItem={setOpenRow} />
+      <WorkItemDetailsModal row={openRow} allRows={workItems.data ?? []} onClose={() => setOpenRow(null)} />
+    </>
+  )
+}
+
 function StateFlowSection() {
   const { config } = useAzureConfig()
   const { iteration, workItems, hiddenIds } = useSprintAnalysis()
@@ -82,7 +149,7 @@ function StateFlowSection() {
   const ids = rows.map((row) => row.id)
   const history = useAzureRequest(
     requested && ids.length > 0
-      ? { key: `state-history|${ids.join(',')}`, fetch: (cfg, signal) => getWorkItemsStateHistory(cfg, ids, signal) }
+      ? { key: `state-history|${ids.join(',')}`, fetch: (cfg, signal) => stateHistoriesFor(cfg, rows, signal) }
       : null,
   )
 
@@ -247,6 +314,9 @@ function SprintAnalysisContent() {
           </div>
           <div className="lg:col-span-2">
             <StateFlowSection />
+          </div>
+          <div className="lg:col-span-2">
+            <TestExecutionsSection />
           </div>
           <div className="lg:col-span-2">
             <TestRunsSection />

@@ -10,10 +10,13 @@ import { WorkItemDetailsModal } from '../../components/organisms/WorkItemDetails
 import { useAzureConfig } from '../../contexts/azure/AzureConfigContext'
 import type { CargoTipo } from '../../lib/cargosStorage'
 import type { Person } from '../../lib/peopleStorage'
-import { computePersonDevMetrics, computePersonQaMetrics, peerAveragePerSprint, type DelayInfo } from '../../lib/personMetrics'
+import { computePersonDevMetrics, computePersonQaMetrics, delayInfo, peerAveragePerSprint, plannedSprintLabel, type DelayInfo } from '../../lib/personMetrics'
 import { canShowQaPersonMetrics } from '../../lib/featureFlags'
 import { devLoadBySprint, personSupportView, qaLoadBySprint, type LoadBySprint } from '../../lib/supportMetrics'
 import { itemTimelines } from '../../lib/stateFlow'
+import { isPointItem } from '../../lib/azure/sprintMetrics'
+import { formatSprintLabel } from '../../lib/sprintsStorage'
+import { itemExecutions } from '../../lib/testExecutionsPerPoint'
 import type { WorkItemRow } from '../../lib/workItems'
 import { loadPersonDashboardBase, usePersonDashboardFilters } from './personDashboardBase'
 import { PersonDashboardFilterBar } from './PersonDashboardFilterBar'
@@ -99,6 +102,18 @@ export function PersonDashboardPage() {
   // Evolução dos itens da pessoa (os mesmos dos cards: atribuídos a ela nas sprints do filtro).
   const timelines = useMemo(() => itemTimelines((devMetrics ?? qaMetrics)?.items.map((item) => item.row) ?? []), [devMetrics, qaMetrics])
 
+  // QA: itens de pontos das sprints do filtro em que a pessoa executou algum Test Case ligado (Tested By).
+  const testExecutions = useMemo(() => {
+    if (!qaMetrics || !person) return undefined
+    const labels = new Set(qaMetrics.sprints.map((s) => s.label))
+    const rows = base.rows.filter((row) => isPointItem(row, config.pointTypes) && labels.has(plannedSprintLabel(row)))
+    return itemExecutions(rows, base.testCaseExecutions, person.email).filter((item) => item.executions > 0)
+  }, [qaMetrics, person, base, config.pointTypes])
+
+  function openRow(row: WorkItemRow) {
+    setOpenItem({ row, delay: delayInfo(row, new Map(base.sprints.map((sprint) => [formatSprintLabel(sprint), sprint]))) })
+  }
+
   if (base.people.length === 0) {
     return (
       <div className="rounded-md border border-[var(--border)] p-10 text-center text-sm text-[var(--text)]">
@@ -172,7 +187,7 @@ export function PersonDashboardPage() {
           onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })}
         />
       )}
-      {qaMetrics && <PersonQaDashboard metrics={qaMetrics} support={support} timelines={timelines} sprints={base.sprints} onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })} />}
+      {qaMetrics && <PersonQaDashboard metrics={qaMetrics} support={support} timelines={timelines} sprints={base.sprints} testExecutions={testExecutions} onOpenWorkItem={openRow} onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })} />}
 
       <WorkItemDetailsModal row={openItem?.row ?? null} delay={openItem?.delay} allRows={base.rows} onClose={() => setOpenItem(null)} />
     </div>

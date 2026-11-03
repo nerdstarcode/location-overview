@@ -53,7 +53,18 @@ export interface AzureWiqlResult {
 
 export interface AzureWorkItem {
   id: number
+  /** Revisão atual: muda a cada alteração do item. */
+  rev?: number
   fields: Record<string, unknown>
+  /** Links do item (Parent, Tested By…), pedidos com `$expand: 'Relations'`. */
+  relations?: AzureWorkItemRelation[]
+}
+
+export interface AzureWorkItemRelation {
+  /** Tipo do link, ex.: "Microsoft.VSTS.Common.TestedBy-Forward". */
+  rel: string
+  /** URL do item ligado (termina em /workItems/{id}). */
+  url: string
 }
 
 export interface AzureTestRun {

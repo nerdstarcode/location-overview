@@ -7,6 +7,8 @@ import {
   summarizeTestRuns,
   testRunsToReportFields,
   stateHistoryFromUpdates,
+  summarizeResultsByTestCase,
+  testedByIds,
   workItemTimeline,
 } from './mappers'
 import { FIXTURE_ITERATION, FIXTURE_TEST_RUNS } from './sprintFixtures'
@@ -123,6 +125,40 @@ describe('summarizeResultsByPerson', () => {
     expect(summary).toEqual([
       { email: 'ada@example.com', name: 'Ada', executed: 3, passed: 1, failed: 1, other: 1 },
       { email: 'alan@example.com', name: 'Alan', executed: 1, passed: 1, failed: 0, other: 0 },
+    ])
+  })
+})
+
+describe('testedByIds', () => {
+  it('pega os Test Cases do link Tested By e ignora os demais links', () => {
+    const item: AzureWorkItem = {
+      id: 1,
+      fields: {},
+      relations: [
+        { rel: 'Microsoft.VSTS.Common.TestedBy-Forward', url: 'https://dev.azure.com/org/_apis/wit/workItems/501' },
+        { rel: 'System.LinkTypes.Hierarchy-Reverse', url: 'https://dev.azure.com/org/_apis/wit/workItems/9' },
+        { rel: 'Microsoft.VSTS.Common.TestedBy-Forward', url: 'https://dev.azure.com/org/_apis/wit/workItems/502' },
+      ],
+    }
+    expect(testedByIds(item)).toEqual([501, 502])
+    expect(azureWorkItemToRow(item, DEFAULT_AZURE_CONFIG).testCaseIds).toEqual([501, 502])
+    expect(azureWorkItemToRow({ id: 2, fields: {} }, DEFAULT_AZURE_CONFIG).testCaseIds).toBeUndefined()
+  })
+})
+
+describe('summarizeResultsByTestCase', () => {
+  it('conta os executados por Test Case e pessoa, com re-testes, sem os não executados', () => {
+    const grace = { id: 'g', displayName: 'Grace', uniqueName: 'grace@example.com' }
+    const results = [
+      { id: 1, outcome: 'Failed', runBy: grace, testCase: { id: '501' } },
+      { id: 2, outcome: 'Passed', runBy: grace, testCase: { id: '501' } },
+      { id: 3, outcome: 'NotExecuted', runBy: grace, testCase: { id: '501' } },
+      { id: 4, outcome: 'Passed', testCase: { id: '502' } },
+      { id: 5, outcome: 'Passed', runBy: grace },
+    ]
+    expect(summarizeResultsByTestCase(results)).toEqual([
+      { testCaseId: 501, email: 'grace@example.com', name: 'Grace', executed: 2, passed: 1, failed: 1 },
+      { testCaseId: 502, email: '', name: '', executed: 1, passed: 1, failed: 0 },
     ])
   })
 })

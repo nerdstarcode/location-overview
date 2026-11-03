@@ -56,6 +56,7 @@ export function SquadDashboardPage() {
           squadName={selectedSquad}
           allowedTypes={QA_TYPES}
           cargoTipo="QA"
+          showTestExecutions
           emptyMessage="Nenhum Test Case ou Test Plan encontrado nos work items importados."
         />
       )}
