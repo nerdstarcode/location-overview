@@ -1,7 +1,3 @@
-import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
-import { loadAzureConfig } from '../../../lib/azure/azureConfigStorage'
-import { isPointItem } from '../../../lib/azure/sprintMetrics'
-import { itemTimelines } from '../../../lib/stateFlow'
 import { useMemo, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
@@ -23,6 +19,12 @@ import { PALETTE } from '../../../lib/chartPalettes'
 import { stateRank } from '../../../lib/stateColors'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { ChartCard } from '../../molecules/ChartCard/ChartCard'
+import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
+import { WorkItemDetailsModal } from '../WorkItemDetailsModal/WorkItemDetailsModal'
+import { loadAzureConfig } from '../../../lib/azure/azureConfigStorage'
+import { isPointItem } from '../../../lib/azure/sprintMetrics'
+import { delayInfo } from '../../../lib/personMetrics'
+import { itemTimelines } from '../../../lib/stateFlow'
 
 export interface WorkItemsDashboardProps {
   /** Uso reservado a Storybook/testes: quando informado, ignora o localStorage. */
@@ -248,10 +250,9 @@ export function WorkItemsDashboard({
   storageKey,
   squadName,
 }: WorkItemsDashboardProps) {
-  const [rows] = useState<WorkItemRow[]>(() => {
-    const base = initialRows ?? loadWorkItems()
-    return allowedTypes ? base.filter((row) => allowedTypes.includes(row.workItemType)) : base
-  })
+  // Base completa (o detalhe do item precisa achar pai e Tasks) e o recorte por tipo da aba.
+  const [allRows] = useState<WorkItemRow[]>(() => initialRows ?? loadWorkItems())
+  const [rows] = useState<WorkItemRow[]>(() => (allowedTypes ? allRows.filter((row) => allowedTypes.includes(row.workItemType)) : allRows))
   const [storedFilters, setFilters] = usePersistedState<Record<string, string[]>>(
     `work-items-dashboard-filters:${storageKey ?? 'default'}`,
     {},
@@ -268,6 +269,7 @@ export function WorkItemsDashboard({
   const [cargosCatalog] = useState<CargoConfig[]>(loadCargos)
   const [testReportsCatalog] = useState<TestReport[]>(loadTestReports)
   const [pointTypes] = useState<string[]>(() => loadAzureConfig().pointTypes)
+  const [openRow, setOpenRow] = useState<WorkItemRow | null>(null)
   const [executionMetric, setExecutionMetric] = useState<ExecutionMetric>('execucao')
   const { theme, palette, paletteBorder, tooltipStyle, stateColors: stateColorsFor } = useChartTheme()
   const colorblind = useColorblindMode()
@@ -612,9 +614,16 @@ export function WorkItemsDashboard({
         </ChartCard>
 
         <div className="lg:col-span-2">
-          <ItemStateTimeline timelines={timelines} />
+          <ItemStateTimeline timelines={timelines} sprints={sprintsCatalog} onOpenItem={setOpenRow} />
         </div>
       </div>
+
+      <WorkItemDetailsModal
+        row={openRow}
+        delay={openRow ? delayInfo(openRow, new Map(sprintsCatalog.map((sprint) => [formatSprintLabel(sprint), sprint]))) : undefined}
+        allRows={allRows}
+        onClose={() => setOpenRow(null)}
+      />
     </div>
   )
 }

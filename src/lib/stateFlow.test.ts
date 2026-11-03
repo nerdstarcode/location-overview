@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { businessDaysBetween, itemFlow, itemFlows, itemTimeline, itemTimelines, stageSummary } from './stateFlow'
+import { businessDaysBetween, formatDuration, itemFlow, itemFlows, itemTimeline, itemTimelines, stageSummary } from './stateFlow'
 import type { StateChange, WorkItemRow } from './workItems'
 
 // Março/2026: dia 2 é segunda-feira.
@@ -29,6 +29,8 @@ const row = (id: number, stateHistory?: StateChange[], sprint = 'Sprint 01'): Wo
 
 const SPRINT_START = '2026-03-02'
 const TODAY = new Date(at(16))
+// O início da sprint é meia-noite local: até o Active (quarta, 4) são 2 dias + as horas daquele dia.
+const TO_ACTIVE_ON_4 = 2 + new Date(at(4)).getHours() / 24
 
 // Active na quarta (4); vai e volta de Fail duas vezes; Testing Prod na sexta seguinte; Closed na segunda.
 const WITH_FAILS = row(1, history(['New', 2], ['Active', 4], ['Testing QA', 9], ['Fail', 10], ['Active', 10], ['Testing QA', 11], ['Fail', 11], ['Testing QA', 12], ['Testing Prod', 13], ['Closed', 16]))
@@ -39,12 +41,22 @@ const NO_HISTORY = row(4)
 // On Hold ainda aberto: conta até hoje.
 const OPEN_HOLD = row(5, history(['Active', 2], ['On Hold', 12]), 'Sprint 02')
 
-describe('businessDaysBetween', () => {
-  it('conta só dias úteis, mesmo dia = 0, nunca negativo', () => {
+describe('businessDaysBetween / formatDuration', () => {
+  it('conta o tempo útil exato, pulando o fim de semana, nunca negativo', () => {
     expect(businessDaysBetween(at(4), at(9))).toBe(3)
     expect(businessDaysBetween(at(6), at(9))).toBe(1)
     expect(businessDaysBetween(at(4), at(4))).toBe(0)
     expect(businessDaysBetween(at(9), at(4))).toBe(0)
+    // Mesmo dia: 3 horas.
+    expect(businessDaysBetween('2026-03-04T10:00:00Z', '2026-03-04T13:00:00Z')).toBeCloseTo(3 / 24)
+  })
+
+  it('menos de 1 dia em horas, a partir de 1 dia em dias', () => {
+    expect(formatDuration(3 / 24)).toBe('3 h')
+    expect(formatDuration(0)).toBe('0 h')
+    expect(formatDuration(1)).toBe('1 dia')
+    expect(formatDuration(2.25)).toBe('2.3 dias')
+    expect(formatDuration(null)).toBe('—')
   })
 })
 
@@ -52,7 +64,7 @@ describe('itemFlow', () => {
   it('mede desde a primeira entrada em Active até a primeira chegada em cada marco e conta os Fails', () => {
     expect(itemFlow(WITH_FAILS, SPRINT_START, TODAY)).toMatchObject({
       activeAt: at(4),
-      sprintToActive: 2,
+      sprintToActive: TO_ACTIVE_ON_4,
       toMilestone: { testingQa: 3, testingProd: 7, done: 8 },
       onHoldDays: 0,
       fails: 2,
@@ -85,7 +97,7 @@ describe('itemFlows', () => {
     const flows = itemFlows([OPEN_HOLD, WITH_FAILS, NEVER_ACTIVE, NO_HISTORY], (label) => starts[label], TODAY)
     expect(flows.map((flow) => [flow.row.id, flow.sprintToActive])).toEqual([
       [5, 0],
-      [1, 2],
+      [1, TO_ACTIVE_ON_4],
       [3, null],
     ])
   })

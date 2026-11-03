@@ -165,13 +165,14 @@ export function PersonDashboardPage() {
           metrics={devMetrics}
           support={support}
           timelines={timelines}
+          sprints={base.sprints}
           peerAverage={peerAverage}
           mode={mode}
           onModeChange={filters.setMode}
           onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })}
         />
       )}
-      {qaMetrics && <PersonQaDashboard metrics={qaMetrics} support={support} timelines={timelines} onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })} />}
+      {qaMetrics && <PersonQaDashboard metrics={qaMetrics} support={support} timelines={timelines} sprints={base.sprints} onOpenItem={(item) => setOpenItem({ row: item.row, delay: item.delay })} />}
 
       <WorkItemDetailsModal row={openItem?.row ?? null} delay={openItem?.delay} allRows={base.rows} onClose={() => setOpenItem(null)} />
     </div>

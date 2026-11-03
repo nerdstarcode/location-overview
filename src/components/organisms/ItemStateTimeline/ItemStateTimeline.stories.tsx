@@ -38,7 +38,16 @@ const meta: Meta<typeof ItemStateTimeline> = {
   component: ItemStateTimeline,
   tags: ['autodocs'],
   parameters: { layout: 'padded' },
-  args: { timelines: TIMELINES, onOpenItem: fn() },
+  args: {
+    timelines: TIMELINES,
+    onOpenItem: fn(),
+    // A Sprint 03 fica fora do período dos itens e não aparece.
+    sprints: [
+      { id: 's1', number: 1, fiscalYear: 'FY25-26', startDate: '2026-03-02', endDate: '2026-03-06', totalValidDays: 5 },
+      { id: 's2', number: 2, fiscalYear: 'FY25-26', startDate: '2026-03-09', endDate: '2026-03-13', totalValidDays: 5 },
+      { id: 's3', number: 3, fiscalYear: 'FY25-26', startDate: '2026-06-01', endDate: '2026-06-12', totalValidDays: 10 },
+    ],
+  },
 }
 
 export default meta

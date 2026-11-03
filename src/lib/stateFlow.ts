@@ -1,4 +1,3 @@
-import { localDateKey, workingDaysBetween } from './dates'
 import { round1 } from './numbers'
 import { plannedSprintLabel } from './personMetrics'
 import { normalizeKey } from './text'
@@ -23,12 +22,38 @@ const FAIL = 'fail'
 
 const isIn = (change: StateChange, states: Set<string>) => states.has(normalizeKey(change.state))
 
-/** Dia (fuso local) de uma data/hora ISO. */
-const dayOf = (iso: string) => localDateKey(new Date(iso))
+const DAY_MS = 24 * 60 * 60 * 1000
 
-/** Dias úteis de `from` até `to` (mesmo dia = 0; nunca negativo). */
+/** Data ISO ou "yyyy-mm-dd" (início do dia no fuso local) em timestamp. */
+const toTime = (value: string) => (value.length === 10 ? new Date(`${value}T00:00:00`).getTime() : Date.parse(value))
+
+/**
+ * Tempo útil de `from` até `to`, em dias fracionados (24h por dia, sem sábados e domingos, no fuso
+ * local): 3 horas numa terça = 0,125. Nunca negativo. Exibir com `formatDuration`.
+ */
 export function businessDaysBetween(from: string, to: string): number {
-  return Math.max(0, workingDaysBetween(dayOf(from), dayOf(to)).length - 1)
+  const start = toTime(from)
+  const end = toTime(to)
+  if (!(end > start)) return 0
+  let total = 0
+  const day = new Date(start)
+  day.setHours(0, 0, 0, 0)
+  while (day.getTime() < end) {
+    const next = new Date(day)
+    next.setDate(next.getDate() + 1)
+    const weekday = day.getDay()
+    if (weekday !== 0 && weekday !== 6) total += Math.max(0, Math.min(end, next.getTime()) - Math.max(start, day.getTime()))
+    day.setTime(next.getTime())
+  }
+  return total / DAY_MS
+}
+
+/** Duração para a tela: menos de 1 dia em horas ("3.5 h"), a partir de 1 dia em dias ("2.3 dias"). */
+export function formatDuration(days: number | null): string {
+  if (days === null) return '—'
+  if (days < 1) return `${round1(days * 24)} h`
+  const value = round1(days)
+  return `${value} ${value === 1 ? 'dia' : 'dias'}`
 }
 
 export interface ItemFlow {
@@ -75,8 +100,9 @@ export function itemFlow(row: WorkItemRow, sprintStart: string | undefined, toda
   }
 }
 
+/** Média sem arredondar: valores abaixo de 1 dia ainda viram horas na tela. */
 function average(values: number[]): number | null {
-  return values.length > 0 ? round1(values.reduce((sum, value) => sum + value, 0) / values.length) : null
+  return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null
 }
 
 /**

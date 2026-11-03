@@ -26,7 +26,7 @@ import { normalizeKey } from '../../lib/text'
 import { SprintAnalysisProvider } from '../../contexts/azure/SprintAnalysisProvider'
 import { useSprintAnalysis } from '../../contexts/azure/SprintAnalysisContext'
 import { useAzureConfig } from '../../contexts/azure/AzureConfigContext'
-import { DEFAULT_TOTAL_VALID_DAYS, formatSprintLabel } from '../../lib/sprintsStorage'
+import { DEFAULT_TOTAL_VALID_DAYS, formatSprintLabel, loadSprints } from '../../lib/sprintsStorage'
 import type { SprintSyncResult, SyncOutcome } from '../../lib/azure/syncToBase'
 import type { PersonPoints } from '../../lib/azure/sprintMetrics'
 
@@ -73,6 +73,7 @@ function StateFlowSection() {
   const { iteration, workItems, hiddenIds } = useSprintAnalysis()
   const [requested, setRequested] = useState(false)
   const [openRow, setOpenRow] = useState<WorkItemRow | null>(null)
+  const [sprints] = useState(loadSprints)
 
   const rows = useMemo(
     () => (workItems.data ?? []).filter((row) => !hiddenIds.has(row.id) && isPointItem(row, config.pointTypes)),
@@ -121,8 +122,8 @@ function StateFlowSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ItemStateTimeline timelines={flow.timelines} onOpenItem={setOpenRow} />
-      <ChartCard title="Fluxo de estados por item" description="Dias úteis desde o Active até cada marco. Clique num item para ver o histórico completo.">
+      <ItemStateTimeline timelines={flow.timelines} onOpenItem={setOpenRow} sprints={sprints} />
+      <ChartCard title="Fluxo de estados por item" description="Tempo útil desde o Active até cada marco (em horas quando é menos de 1 dia). Clique num item para ver o histórico completo.">
         <StateFlowTable items={flow.items} onOpenItem={setOpenRow} />
       </ChartCard>
       <WorkItemDetailsModal row={openRow} allRows={rows} onClose={() => setOpenRow(null)} />

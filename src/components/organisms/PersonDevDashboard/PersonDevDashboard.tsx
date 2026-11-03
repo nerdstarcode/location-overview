@@ -24,6 +24,7 @@ import {
   type PersonDevMetrics,
 } from '../../../lib/personMetrics'
 import type { ItemTimeline } from '../../../lib/stateFlow'
+import type { Sprint } from '../../../lib/sprintsStorage'
 import type { PersonSupportView } from '../../../lib/supportMetrics'
 
 const ZONE_SERIES = 'Extensão (+3 dias úteis acima do máximo)'
@@ -69,9 +70,11 @@ export interface PersonDevDashboardProps {
   support?: PersonSupportView | null
   /** Evolução de cada item da pessoa (Active → Testing QA → Testing Prod → Done). */
   timelines?: ItemTimeline[]
+  /** Sprints cadastradas, para marcar início e fim na evolução por item. */
+  sprints?: Sprint[]
 }
 
-export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, onOpenItem, support, timelines }: PersonDevDashboardProps) {
+export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, onOpenItem, support, timelines, sprints: registeredSprints }: PersonDevDashboardProps) {
   const chart = useChartTheme()
   const [onlyDelayed, setOnlyDelayed] = useState(false)
   const { sprints } = metrics
@@ -417,6 +420,7 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
       {timelines && (
         <ItemStateTimeline
           timelines={timelines}
+          sprints={registeredSprints}
           onOpenItem={(row) => {
             const item = metrics.items.find((i) => i.row.id === row.id)
             if (item) onOpenItem(item)

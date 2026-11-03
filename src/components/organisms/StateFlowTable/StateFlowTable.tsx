@@ -1,7 +1,7 @@
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '../DataTable/DataTable'
 import { formatDateBR } from '../../../lib/dates'
-import type { ItemFlow } from '../../../lib/stateFlow'
+import { formatDuration, type ItemFlow } from '../../../lib/stateFlow'
 import type { WorkItemRow } from '../../../lib/workItems'
 
 export interface StateFlowTableProps {
@@ -9,13 +9,13 @@ export interface StateFlowTableProps {
   onOpenItem?: (row: WorkItemRow) => void
 }
 
-/** Dias úteis, ou "—" quando o item não chegou ao marco. */
+/** Tempo útil (horas abaixo de 1 dia), ou "—" quando o item não chegou ao marco. */
 const daysColumn = (id: string, header: string, pick: (flow: ItemFlow) => number | null): ColumnDef<ItemFlow, unknown> => ({
   id,
   header,
   accessorFn: (flow) => pick(flow) ?? Number.POSITIVE_INFINITY,
-  cell: ({ row }) => pick(row.original) ?? '—',
-  meta: { align: 'right', numeric: true, searchValue: (flow: ItemFlow) => String(pick(flow) ?? '') },
+  cell: ({ row }) => formatDuration(pick(row.original)),
+  meta: { align: 'right', numeric: true, searchValue: (flow: ItemFlow) => formatDuration(pick(flow)) },
 })
 
 const COLUMNS: ColumnDef<ItemFlow, unknown>[] = [
@@ -33,7 +33,7 @@ const COLUMNS: ColumnDef<ItemFlow, unknown>[] = [
   daysColumn('testingQa', '→ Testing QA', (flow) => flow.toMilestone.testingQa),
   daysColumn('testingProd', '→ Testing Prod', (flow) => flow.toMilestone.testingProd),
   daysColumn('done', '→ Done', (flow) => flow.toMilestone.done),
-  { id: 'onHold', header: 'On Hold', accessorFn: (flow) => flow.onHoldDays, meta: { align: 'right', numeric: true } },
+  daysColumn('onHold', 'On Hold', (flow) => flow.onHoldDays),
   { id: 'fails', header: 'Fails', accessorFn: (flow) => flow.fails, meta: { align: 'right', numeric: true } },
 ]
 

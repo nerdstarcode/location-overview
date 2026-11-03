@@ -13,6 +13,7 @@ import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
 import { DELAY_REASON_LABEL, type PersonQaItem, type PersonQaMetrics } from '../../../lib/personMetrics'
 import type { ItemTimeline } from '../../../lib/stateFlow'
+import type { Sprint } from '../../../lib/sprintsStorage'
 import type { PersonSupportView } from '../../../lib/supportMetrics'
 
 // Explicação resumida de cada card (tooltip ⓘ).
@@ -35,9 +36,11 @@ export interface PersonQaDashboardProps {
   support?: PersonSupportView | null
   /** Evolução de cada item da pessoa (Active → Testing QA → Testing Prod → Done). */
   timelines?: ItemTimeline[]
+  /** Sprints cadastradas, para marcar início e fim na evolução por item. */
+  sprints?: Sprint[]
 }
 
-export function PersonQaDashboard({ metrics, onOpenItem, support, timelines }: PersonQaDashboardProps) {
+export function PersonQaDashboard({ metrics, onOpenItem, support, timelines, sprints: registeredSprints }: PersonQaDashboardProps) {
   const chart = useChartTheme()
   const { sprints } = metrics
   const supportBySprint = support?.bySprint
@@ -219,6 +222,7 @@ export function PersonQaDashboard({ metrics, onOpenItem, support, timelines }: P
       {timelines && (
         <ItemStateTimeline
           timelines={timelines}
+          sprints={registeredSprints}
           onOpenItem={(row) => {
             const item = metrics.items.find((i) => i.row.id === row.id)
             if (item) onOpenItem(item)
