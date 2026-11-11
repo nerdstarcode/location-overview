@@ -1,11 +1,12 @@
 import { round1 } from './numbers'
-import { compareSprintLabels, plannedSprintLabel } from './personMetrics'
+import { compareSprintLabels } from './personMetrics'
 import { normalizeKey } from './text'
 import type { WorkItemRow } from './workItems'
 
 // Execuções de teste por story point: cada item de pontos (User Story, Bug, Enabler) soma os
-// resultados executados dos Test Cases ligados a ele (Tested By), em qualquer sprint, contando os
-// re-testes. Execuções ÷ SP dos itens com Test Case dá a média de execuções por story point.
+// resultados executados dos Test Cases ligados a ele ou às Tasks filhas dele (Tested By), contando os re-testes. Cada
+// execução fica na sprint da data em que foi executada; numa sprint, a média é execuções feitas nela
+// ÷ SP dos itens testados nela (um item testado em duas sprints conta nas duas).
 
 /** Execuções de um Test Case (por pessoa); o que a sincronização ou a análise ao vivo trazem. */
 export interface TestCaseRun {
@@ -14,7 +15,18 @@ export interface TestCaseRun {
   executed: number
   passed: number
   failed: number
+  /** Sprint da data de execução ("Sprint NN - FYxx-yy"); ausente na análise ao vivo de uma sprint. */
+  sprintLabel?: string
 }
+
+interface Counts {
+  executed: number
+  passed: number
+  failed: number
+}
+
+const ZERO: Counts = { executed: 0, passed: 0, failed: 0 }
+const add = (a: Counts, b: Counts): Counts => ({ executed: a.executed + b.executed, passed: a.passed + b.passed, failed: a.failed + b.failed })
 
 export interface ItemExecutions {
   row: WorkItemRow
@@ -22,81 +34,87 @@ export interface ItemExecutions {
   executions: number
   passed: number
   failed: number
-  /** Execuções ÷ story points do item; null sem SP ou sem Test Case ligado. */
+  /** Execuções ÷ story points do item; null sem SP ou sem execução. */
   perPoint: number | null
+  /** Execuções por sprint da data de execução. */
+  bySprint: Map<string, Counts>
 }
 
 /**
- * Execuções de cada item pelos Test Cases ligados. Com `email`, só as execuções feitas por essa
- * pessoa (visão individual de QA).
+ * Execuções de cada item pelos Test Cases ligados a ele e às Tasks filhas dele (Parent = o item), que
+ * vêm de `allRows`. Com `email`, só as execuções feitas por essa pessoa (visão individual de QA).
  */
-export function itemExecutions(rows: WorkItemRow[], runs: TestCaseRun[], email?: string): ItemExecutions[] {
+export function itemExecutions(rows: WorkItemRow[], runs: TestCaseRun[], email?: string, allRows: WorkItemRow[] = rows): ItemExecutions[] {
+  const childTestCases = new Map<number, number[]>()
+  for (const child of allRows) {
+    if (child.parentId === undefined || !child.testCaseIds?.length) continue
+    childTestCases.set(child.parentId, [...(childTestCases.get(child.parentId) ?? []), ...child.testCaseIds])
+  }
   const person = email ? normalizeKey(email) : null
-  const byTestCase = new Map<number, { executed: number; passed: number; failed: number }>()
+  const byTestCase = new Map<number, TestCaseRun[]>()
   for (const run of runs) {
     if (person && normalizeKey(run.email) !== person) continue
-    const entry = byTestCase.get(run.testCaseId) ?? { executed: 0, passed: 0, failed: 0 }
-    byTestCase.set(run.testCaseId, { executed: entry.executed + run.executed, passed: entry.passed + run.passed, failed: entry.failed + run.failed })
+    byTestCase.set(run.testCaseId, [...(byTestCase.get(run.testCaseId) ?? []), run])
   }
   return rows.map((row) => {
-    const ids = row.testCaseIds ?? []
-    const totals = ids.reduce(
-      (sum, id) => {
-        const entry = byTestCase.get(id)
-        return entry ? { executed: sum.executed + entry.executed, passed: sum.passed + entry.passed, failed: sum.failed + entry.failed } : sum
-      },
-      { executed: 0, passed: 0, failed: 0 },
-    )
+    // Sem repetir: o mesmo Test Case ligado à US e a uma Task dela conta uma vez.
+    const ids = [...new Set([...(row.testCaseIds ?? []), ...(childTestCases.get(row.id) ?? [])])]
+    const itemRuns = ids.flatMap((id) => byTestCase.get(id) ?? [])
+    const totals = itemRuns.reduce<Counts>((sum, run) => add(sum, run), ZERO)
+    const bySprint = new Map<string, Counts>()
+    for (const run of itemRuns) {
+      if (run.sprintLabel) bySprint.set(run.sprintLabel, add(bySprint.get(run.sprintLabel) ?? ZERO, run))
+    }
     return {
       row,
       testCases: ids.length,
       executions: totals.executed,
       passed: totals.passed,
       failed: totals.failed,
-      perPoint: ids.length > 0 && row.storyPoints > 0 ? totals.executed / row.storyPoints : null,
+      perPoint: totals.executed > 0 && row.storyPoints > 0 ? totals.executed / row.storyPoints : null,
+      bySprint,
     }
   })
 }
 
 export interface ExecutionsSummary {
-  items: number
-  /** Itens com pelo menos um Test Case ligado (Tested By). */
-  itemsWithTests: number
-  points: number
-  /** SP dos itens com Test Case: o denominador da média. */
-  pointsWithTests: number
+  /** Itens com pelo menos uma execução de Test Case ligado. */
+  testedItems: number
+  /** SP dos itens testados: o denominador da média. */
+  testedPoints: number
   executions: number
   passed: number
   failed: number
-  /** Execuções ÷ SP dos itens com Test Case; null sem SP com Test Case. */
+  /** Execuções ÷ SP dos itens testados; null sem SP testado. */
   perPoint: number | null
 }
 
-export function executionsSummary(items: ItemExecutions[]): ExecutionsSummary {
-  const withTests = items.filter((item) => item.testCases > 0)
-  const sum = (list: ItemExecutions[], pick: (item: ItemExecutions) => number) => list.reduce((total, item) => total + pick(item), 0)
-  const pointsWithTests = sum(withTests, (item) => item.row.storyPoints)
-  const executions = sum(withTests, (item) => item.executions)
+function summarize(entries: { points: number; counts: Counts }[]): ExecutionsSummary {
+  const tested = entries.filter((entry) => entry.counts.executed > 0)
+  const points = tested.reduce((sum, entry) => sum + entry.points, 0)
+  const counts = tested.reduce<Counts>((sum, entry) => add(sum, entry.counts), ZERO)
   return {
-    items: items.length,
-    itemsWithTests: withTests.length,
-    points: round1(sum(items, (item) => item.row.storyPoints)),
-    pointsWithTests: round1(pointsWithTests),
-    executions,
-    passed: sum(withTests, (item) => item.passed),
-    failed: sum(withTests, (item) => item.failed),
-    perPoint: pointsWithTests > 0 ? round1(executions / pointsWithTests) : null,
+    testedItems: tested.length,
+    testedPoints: round1(points),
+    executions: counts.executed,
+    passed: counts.passed,
+    failed: counts.failed,
+    perPoint: points > 0 ? round1(counts.executed / points) : null,
   }
 }
 
-/** Resumo por sprint planejada (coluna Sprint), em ordem cronológica. */
+/** Resumo do período: todas as execuções ÷ SP dos itens testados. */
+export function executionsSummary(items: ItemExecutions[]): ExecutionsSummary {
+  return summarize(items.map((item) => ({ points: item.row.storyPoints, counts: { executed: item.executions, passed: item.passed, failed: item.failed } })))
+}
+
+/** Resumo por sprint da data de execução: execuções feitas na sprint ÷ SP dos itens testados nela. */
 export function executionsBySprint(items: ItemExecutions[]): { label: string; summary: ExecutionsSummary }[] {
-  const bySprint = new Map<string, ItemExecutions[]>()
-  for (const item of items) {
-    const label = plannedSprintLabel(item.row)
-    if (label) bySprint.set(label, [...(bySprint.get(label) ?? []), item])
-  }
-  return [...bySprint.entries()]
-    .map(([label, list]) => ({ label, summary: executionsSummary(list) }))
+  const labels = new Set(items.flatMap((item) => [...item.bySprint.keys()]))
+  return [...labels]
+    .map((label) => ({
+      label,
+      summary: summarize(items.map((item) => ({ points: item.row.storyPoints, counts: item.bySprint.get(label) ?? ZERO }))),
+    }))
     .sort((a, b) => compareSprintLabels(a.label, b.label))
 }

@@ -12,13 +12,15 @@ import { QA_ITEM_TYPES } from '../personMetrics'
 import type { StateChange, WorkItemRow } from '../workItems'
 import { loadWorkItems, mergeWorkItems, saveWorkItems } from '../workItemsStorage'
 import { getIterationWorkItems, getWorkItemsStateHistory, listTestRuns } from './api'
-import { relevantTestRuns, testRunResultSummaries } from './testRunResults'
+import { relevantTestRuns, testRunResultSummaries, type Dated } from './testRunResults'
 import type { AzureConfig } from './azureConfigStorage'
 import { isAbortError } from './client'
 import { isPointItem } from './sprintMetrics'
 import {
   azureWorkItemToRow,
   iterationSprintInfo,
+  mergePersonTestSummaries,
+  mergeTestCaseRunSummaries,
   summarizeTestRuns,
   testRunsToReportFields,
   type PersonTestSummary,
@@ -146,10 +148,10 @@ export interface SprintSyncInput {
   iteration: AzureIteration
   workItems: WorkItemRow[]
   testRuns: TestRunsSummary | null
-  /** Testes executados por pessoa; undefined quando os test results não foram buscados. */
-  testExecutions?: PersonTestSummary[]
-  /** Execuções por Test Case e pessoa (base das execuções por story point); idem. */
-  testCaseExecutions?: TestCaseRunSummary[]
+  /** Testes executados por pessoa e dia; undefined quando os test results não foram buscados. */
+  testExecutions?: Dated<PersonTestSummary>[]
+  /** Execuções por Test Case, pessoa e dia (base das execuções por story point); idem. */
+  testCaseExecutions?: Dated<TestCaseRunSummary>[]
 }
 
 export interface SprintSyncResult {
@@ -221,15 +223,37 @@ function syncTestReport(squadId: string, sprint: Sprint | undefined, testRuns: T
   return true
 }
 
-function syncTestExecutions(squadId: string, sprint: Sprint | undefined, executions: PersonTestSummary[] | undefined): number {
-  if (!sprint || !executions) return 0
-  replaceTestExecutions(squadId, sprint.id, executions)
-  return executions.length
+/**
+ * Sprint cadastrada que contém o dia ("yyyy-mm-dd") da execução; a sincronizada quando o dia cai nela,
+ * não tem data ou não cai em nenhuma sprint cadastrada.
+ */
+export function sprintForDay(day: string | undefined, sprints: Sprint[], synced: Sprint): Sprint {
+  const contains = (sprint: Sprint) => !!sprint.startDate && !!sprint.endDate && sprint.startDate <= day! && day! <= sprint.endDate
+  if (!day || contains(synced)) return synced
+  return sprints.find(contains) ?? synced
 }
 
-function syncTestCaseExecutions(squadId: string, sprint: Sprint | undefined, executions: TestCaseRunSummary[] | undefined): number {
+/** Agrupa os resumos pela sprint da data de execução e soma cada grupo com `merge`. */
+function bySprintOfDay<T>(summaries: Dated<T>[], synced: Sprint, merge: (list: T[]) => T[]): (T & { sprintId: string })[] {
+  const sprints = loadSprints()
+  const groups = new Map<string, T[]>()
+  for (const { day, ...summary } of summaries) {
+    const sprintId = sprintForDay(day, sprints, synced).id
+    groups.set(sprintId, [...(groups.get(sprintId) ?? []), summary as T])
+  }
+  return [...groups.entries()].flatMap(([sprintId, list]) => merge(list).map((summary) => ({ ...summary, sprintId })))
+}
+
+function syncTestExecutions(squadId: string, sprint: Sprint | undefined, executions: Dated<PersonTestSummary>[] | undefined): number {
   if (!sprint || !executions) return 0
-  replaceTestCaseExecutions(squadId, sprint.id, executions)
+  const entries = bySprintOfDay(executions, sprint, mergePersonTestSummaries)
+  replaceTestExecutions(squadId, sprint.id, entries)
+  return new Set(entries.map((e) => e.email.toLowerCase())).size
+}
+
+function syncTestCaseExecutions(squadId: string, sprint: Sprint | undefined, executions: Dated<TestCaseRunSummary>[] | undefined): number {
+  if (!sprint || !executions) return 0
+  replaceTestCaseExecutions(squadId, sprint.id, bySprintOfDay(executions, sprint, mergeTestCaseRunSummaries))
   return new Set(executions.map((e) => e.testCaseId)).size
 }
 
@@ -273,7 +297,7 @@ async function fetchIterationTests(
   project: string,
   iteration: AzureIteration,
   signal?: AbortSignal,
-): Promise<{ testRuns: TestRunsSummary | null; testExecutions?: PersonTestSummary[]; testCaseExecutions?: TestCaseRunSummary[] }> {
+): Promise<{ testRuns: TestRunsSummary | null; testExecutions?: Dated<PersonTestSummary>[]; testCaseExecutions?: Dated<TestCaseRunSummary>[] }> {
   const { startDate, finishDate } = iteration.attributes
   if (!startDate || !finishDate) return { testRuns: null }
   const runs = await listTestRuns(config, project, startDate, finishDate, signal)

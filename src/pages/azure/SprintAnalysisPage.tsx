@@ -99,7 +99,7 @@ function TestExecutionsSection() {
         }
       : null,
   )
-  const items = useMemo(() => (results.data ? itemExecutions(rows, results.data.testCases) : null), [results.data, rows])
+  const items = useMemo(() => (results.data ? itemExecutions(rows, results.data.testCases, undefined, workItems.data ?? []) : null), [results.data, rows, workItems.data])
 
   if (!items) {
     return (

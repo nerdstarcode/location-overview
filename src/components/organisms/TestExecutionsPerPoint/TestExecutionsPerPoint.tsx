@@ -7,15 +7,15 @@ import { StatCard } from '../../molecules/StatCard/StatCard'
 import { DataTable } from '../DataTable/DataTable'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
-import { plannedSprintLabel } from '../../../lib/personMetrics'
+import { compareSprintLabels, plannedSprintLabel } from '../../../lib/personMetrics'
 import { executionsBySprint, executionsSummary, type ItemExecutions } from '../../../lib/testExecutionsPerPoint'
 import type { WorkItemRow } from '../../../lib/workItems'
 
 const INFO = {
   perPoint:
-    'Execuções de teste ÷ story points, só dos itens com Test Case ligado (link "Tested By" no Azure). Cada resultado executado conta, inclusive os re-testes depois de um Fail; Not Executed / In Progress não contam.',
+    'Execuções de teste ÷ story points dos itens testados (com algum Test Case ligado pelo "Tested By" executado). Cada resultado executado conta, inclusive os re-testes depois de um Fail; Not Executed / In Progress não contam. Cada execução fica na sprint da data em que foi executada.',
   executions: 'Resultados de teste executados dos Test Cases ligados aos itens, nos test runs das sprints sincronizadas.',
-  coverage: 'Itens de pontos (User Story, Bug, Enabler…) com pelo menos um Test Case ligado pelo "Tested By". Os sem Test Case ficam fora da média.',
+  tested: 'Itens de pontos (User Story, Bug, Enabler…) com pelo menos uma execução de um Test Case ligado pelo "Tested By".',
 }
 
 const perPointText = (value: number | null) => (value === null ? '—' : String(round1(value)))
@@ -24,7 +24,12 @@ const COLUMNS: ColumnDef<ItemExecutions, unknown>[] = [
   { id: 'id', header: 'ID', accessorFn: (item) => item.row.id, meta: { align: 'right', headerAlign: 'left', numeric: true } },
   { id: 'type', header: 'Tipo', accessorFn: (item) => item.row.workItemType },
   { id: 'title', header: 'Título', accessorFn: (item) => item.row.title },
-  { id: 'sprint', header: 'Sprint', accessorFn: (item) => plannedSprintLabel(item.row) },
+  { id: 'sprint', header: 'Sprint planejada', accessorFn: (item) => plannedSprintLabel(item.row) },
+  {
+    id: 'testedIn',
+    header: 'Testado em',
+    accessorFn: (item) => [...item.bySprint.keys()].sort(compareSprintLabels).join(', ') || '—',
+  },
   { id: 'points', header: 'SP', accessorFn: (item) => item.row.storyPoints, meta: { align: 'right', numeric: true } },
   { id: 'testCases', header: 'Test Cases', accessorFn: (item) => item.testCases, meta: { align: 'right', numeric: true } },
   { id: 'executions', header: 'Execuções', accessorFn: (item) => item.executions, meta: { align: 'right', numeric: true } },
@@ -54,11 +59,11 @@ export function TestExecutionsPerPoint({
   title = 'Execuções de teste por story point',
   description = 'Quantas execuções de teste cada item teve pelos Test Cases ligados a ele (Tested By) e a média de execuções por story point.',
   onOpenItem,
-  emptyMessage = 'Nenhum item de pontos com Test Case ligado. Sincronize as sprints pelo Azure DevOps para trazer os links "Tested By" e os test results.',
+  emptyMessage = 'Nenhum item de pontos com execução de Test Case ligado. Sincronize as sprints pelo Azure DevOps para trazer os links "Tested By" e os test results.',
 }: TestExecutionsPerPointProps) {
   const chart = useChartTheme()
   const summary = useMemo(() => executionsSummary(items), [items])
-  const sprints = useMemo(() => executionsBySprint(items).filter((s) => s.summary.itemsWithTests > 0), [items])
+  const sprints = useMemo(() => executionsBySprint(items).filter((s) => s.summary.testedItems > 0), [items])
 
   const option: EChartsOption = useMemo(
     () =>
@@ -75,7 +80,7 @@ export function TestExecutionsPerPoint({
               `<b>${params[0].axisValueLabel}</b>`,
               `Execuções / SP: <b>${perPointText(s.perPoint)}</b>`,
               `${s.executions} execuções (${s.passed} passed · ${s.failed} failed)`,
-              `${s.pointsWithTests} SP em ${s.itemsWithTests} de ${s.items} itens com Test Case`,
+              `${s.testedPoints} SP em ${s.testedItems} item(ns) testado(s) na sprint`,
             ].join('<br/>')
           },
         },
@@ -117,20 +122,15 @@ export function TestExecutionsPerPoint({
   )
 
   return (
-    <ChartCard title={title} description={description} isEmpty={summary.itemsWithTests === 0} emptyMessage={emptyMessage}>
+    <ChartCard title={title} description={description} isEmpty={summary.testedItems === 0} emptyMessage={emptyMessage}>
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Execuções por SP" info={INFO.perPoint} value={perPointText(summary.perPoint)} hint={`${summary.executions} execuções ÷ ${summary.pointsWithTests} SP`} />
+        <StatCard label="Execuções por SP" info={INFO.perPoint} value={perPointText(summary.perPoint)} hint={`${summary.executions} execuções ÷ ${summary.testedPoints} SP testados`} />
         <StatCard label="Execuções" info={INFO.executions} value={summary.executions} hint={`${summary.passed} passed · ${summary.failed} failed`} />
-        <StatCard
-          label="Itens com Test Case"
-          info={INFO.coverage}
-          value={`${summary.itemsWithTests} de ${summary.items}`}
-          hint={`${summary.pointsWithTests} de ${summary.points} SP cobertos`}
-        />
+        <StatCard label="Itens testados" info={INFO.tested} value={summary.testedItems} hint={`${summary.testedPoints} SP`} />
         <StatCard
           label="Execuções por item"
-          value={summary.itemsWithTests > 0 ? round1(summary.executions / summary.itemsWithTests) : '—'}
-          hint="Média dos itens com Test Case"
+          value={summary.testedItems > 0 ? round1(summary.executions / summary.testedItems) : '—'}
+          hint="Média dos itens testados"
         />
       </div>
 
@@ -141,11 +141,11 @@ export function TestExecutionsPerPoint({
       )}
 
       <DataTable
-        data={items.filter((item) => item.testCases > 0)}
+        data={items.filter((item) => item.executions > 0)}
         columns={COLUMNS}
         getRowId={(item) => String(item.row.id)}
         onRowClick={onOpenItem ? (item) => onOpenItem(item.row) : undefined}
-        emptyMessage="Nenhum item com Test Case ligado."
+        emptyMessage="Nenhum item testado."
       />
     </ChartCard>
   )

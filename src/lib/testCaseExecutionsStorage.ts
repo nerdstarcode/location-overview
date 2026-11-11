@@ -6,7 +6,10 @@ import { readList, writeJson } from './localStore'
  */
 export interface TestCaseExecution {
   squadId: string
+  /** Sprint da data em que o Test Case foi executado. */
   sprintId: string
+  /** Sprint sincronizada que trouxe a execução (ausente nos registros antigos: a própria sprintId). */
+  sourceSprintId?: string
   testCaseId: number
   /** Quem executou (runBy); vazio nos runs automatizados sem responsável. */
   email: string
@@ -26,15 +29,18 @@ export function saveTestCaseExecutions(executions: TestCaseExecution[]): void {
   writeJson(STORAGE_KEY, executions)
 }
 
-/** Substitui as execuções da squad/sprint (a sincronização traz o retrato completo da sprint). */
+/**
+ * Substitui as execuções que a sincronização da squad/sprint `sourceSprintId` trouxe (o retrato
+ * completo daquela sprint), cada uma já na sprint da data de execução.
+ */
 export function replaceTestCaseExecutions(
   squadId: string,
-  sprintId: string,
-  incoming: Omit<TestCaseExecution, 'squadId' | 'sprintId'>[],
+  sourceSprintId: string,
+  incoming: Omit<TestCaseExecution, 'squadId' | 'sourceSprintId'>[],
 ): TestCaseExecution[] {
   const next = [
-    ...loadTestCaseExecutions().filter((e) => !(e.squadId === squadId && e.sprintId === sprintId)),
-    ...incoming.map((entry) => ({ ...entry, squadId, sprintId })),
+    ...loadTestCaseExecutions().filter((e) => !(e.squadId === squadId && (e.sourceSprintId ?? e.sprintId) === sourceSprintId)),
+    ...incoming.map((entry) => ({ ...entry, squadId, sourceSprintId })),
   ]
   saveTestCaseExecutions(next)
   return next

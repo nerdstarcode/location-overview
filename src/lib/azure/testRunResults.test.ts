@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { localDateKey } from '../dates'
 import { listTestRunResults } from './api'
 import { DEFAULT_AZURE_CONFIG } from './azureConfigStorage'
 import { relevantTestRuns, testRunResultSummaries } from './testRunResults'
@@ -47,16 +48,28 @@ describe('relevantTestRuns', () => {
 })
 
 describe('testRunResultSummaries', () => {
-  it('soma os runs e reaproveita os concluídos já lidos; em andamento busca de novo', async () => {
-    const runs = [run(1), run(2), run(3, { state: 'InProgress' })]
+  it('soma os runs por dia de execução e reaproveita os concluídos já lidos; em andamento busca de novo', async () => {
+    const day = (iso: string) => localDateKey(new Date(iso))
+    // Resultado com conclusão própria; sem ela, vale a data do run.
+    vi.mocked(listTestRunResults).mockImplementation(async (_config, _project, runId) =>
+      runId === 1
+        ? [{ id: 1, outcome: 'Passed', runBy: grace, testCase: { id: '501' }, completedDate: '2025-09-16T15:00:00Z' }]
+        : [{ id: 2, outcome: 'Passed', runBy: grace, testCase: { id: '501' } }],
+    )
+    const runs = [run(1), run(2, { startedDate: '2025-09-03T15:00:00Z' }), run(3, { state: 'InProgress', startedDate: '2025-09-03T16:00:00Z' })]
     const first = await testRunResultSummaries(config, 'Proj', runs)
     expect(first.fetched).toBe(3)
-    expect(first.persons).toEqual([{ email: 'grace@example.com', name: 'Grace', executed: 3, passed: 3, failed: 0, other: 0 }])
-    expect(first.testCases).toEqual([{ testCaseId: 501, email: 'grace@example.com', name: 'Grace', executed: 3, passed: 3, failed: 0 }])
+    expect(first.testCases).toEqual(
+      expect.arrayContaining([
+        { testCaseId: 501, email: 'grace@example.com', name: 'Grace', executed: 1, passed: 1, failed: 0, day: day('2025-09-16T15:00:00Z') },
+        { testCaseId: 501, email: 'grace@example.com', name: 'Grace', executed: 2, passed: 2, failed: 0, day: day('2025-09-03T15:00:00Z') },
+      ]),
+    )
+    expect(first.persons.reduce((sum, p) => sum + p.executed, 0)).toBe(3)
 
     const second = await testRunResultSummaries(config, 'Proj', runs)
     expect(second.fetched).toBe(1)
     expect(vi.mocked(listTestRunResults).mock.calls.map((call) => call[2])).toEqual([1, 2, 3, 3])
-    expect(second.persons[0].executed).toBe(3)
+    expect(second.testCases).toEqual(first.testCases)
   })
 })

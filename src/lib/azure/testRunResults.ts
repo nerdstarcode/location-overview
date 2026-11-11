@@ -1,4 +1,5 @@
-import { readList, writeJson } from '../localStore'
+import { localDateKey } from '../dates'
+import { readList, removeKey, writeJson } from '../localStore'
 import { normalizeKey } from '../text'
 import { listTestRunResults } from './api'
 import type { AzureConfig } from './azureConfigStorage'
@@ -10,20 +11,47 @@ import {
   type PersonTestSummary,
   type TestCaseRunSummary,
 } from './mappers'
-import type { AzureTestRun } from './types'
+import type { AzureTestResult, AzureTestRun } from './types'
 
 // Resultados dos test runs com o mínimo de pedidos ao Azure (um por run): por padrão só os runs
 // manuais da sprint do time entram (configurável), e o resumo de cada run concluído fica guardado no
 // navegador, para uma nova sincronização buscar só os runs novos ou ainda em andamento.
 
-/** Resumo já calculado de um run concluído (um run concluído não muda mais). */
+/** Resumo com o dia (fuso local, "yyyy-mm-dd") em que os resultados foram executados; vazio sem data. */
+export type Dated<T> = T & { day?: string }
+
+/** Resumo já calculado de um run concluído (um run concluído não muda mais), separado por dia. */
 interface CachedRunResults {
   runId: number
-  persons: PersonTestSummary[]
-  testCases: TestCaseRunSummary[]
+  persons: Dated<PersonTestSummary>[]
+  testCases: Dated<TestCaseRunSummary>[]
 }
 
-const CACHE_KEY = 'location-overview:test-run-results'
+const CACHE_KEY = 'location-overview:test-run-results:v2'
+/** Cache anterior, sem o dia de execução: descartado. */
+const LEGACY_CACHE_KEY = 'location-overview:test-run-results'
+
+/** Dia da execução: a conclusão do resultado; sem ela, a do run ou o início do run. */
+function resultDay(result: AzureTestResult, run: AzureTestRun): string {
+  const date = result.completedDate ?? run.completedDate ?? run.startedDate
+  return date ? localDateKey(new Date(date)) : ''
+}
+
+function groupByDay(results: AzureTestResult[], run: AzureTestRun): Map<string, AzureTestResult[]> {
+  const byDay = new Map<string, AzureTestResult[]>()
+  for (const result of results) {
+    const day = resultDay(result, run)
+    byDay.set(day, [...(byDay.get(day) ?? []), result])
+  }
+  return byDay
+}
+
+/** Soma por dia: `merge` junta os resumos de cada dia separadamente. */
+function mergeByDay<T>(summaries: Dated<T>[], merge: (list: T[]) => T[]): Dated<T>[] {
+  const byDay = new Map<string, T[]>()
+  for (const { day = '', ...summary } of summaries) byDay.set(day, [...(byDay.get(day) ?? []), summary as T])
+  return [...byDay.entries()].flatMap(([day, list]) => merge(list).map((summary) => ({ ...summary, day })))
+}
 
 const normalizePath = (path: string) => normalizeKey(path.replace(/^\\+|\\+$/g, ''))
 
@@ -48,15 +76,15 @@ export function relevantTestRuns(runs: AzureTestRun[], iterationPath: string, fi
 const isCompleted = (run: AzureTestRun) => normalizeKey(run.state) === 'completed'
 
 export interface RunResultSummaries {
-  /** Executados por pessoa (todos os runs somados). */
-  persons: PersonTestSummary[]
-  /** Executados por Test Case e pessoa (todos os runs somados). */
-  testCases: TestCaseRunSummary[]
+  /** Executados por pessoa e dia de execução (todos os runs somados). */
+  persons: Dated<PersonTestSummary>[]
+  /** Executados por Test Case, pessoa e dia de execução (todos os runs somados). */
+  testCases: Dated<TestCaseRunSummary>[]
   /** Quantos runs precisaram ser buscados no Azure (os demais vieram do cache). */
   fetched: number
 }
 
-/** Resultados executados dos `runs`, por pessoa e por Test Case, reaproveitando os runs concluídos já lidos. */
+/** Resultados executados dos `runs`, por pessoa e por Test Case e por dia, reaproveitando os runs concluídos já lidos. */
 export async function testRunResultSummaries(
   config: AzureConfig,
   project: string,
@@ -74,14 +102,20 @@ export async function testRunResultSummaries(
     }
     const results = await listTestRunResults(config, project, run.id, signal)
     fetched += 1
-    const entry = { runId: run.id, persons: summarizeResultsByPerson(results), testCases: summarizeResultsByTestCase(results) }
+    const days = [...groupByDay(results, run)]
+    const entry = {
+      runId: run.id,
+      persons: days.flatMap(([day, list]) => summarizeResultsByPerson(list).map((summary) => ({ ...summary, day }))),
+      testCases: days.flatMap(([day, list]) => summarizeResultsByTestCase(list).map((summary) => ({ ...summary, day }))),
+    }
     if (isCompleted(run)) cache.set(run.id, entry)
     summaries.push(entry)
   }
   writeJson(CACHE_KEY, [...cache.values()])
+  removeKey(LEGACY_CACHE_KEY)
   return {
-    persons: mergePersonTestSummaries(summaries.flatMap((s) => s.persons)),
-    testCases: mergeTestCaseRunSummaries(summaries.flatMap((s) => s.testCases)),
+    persons: mergeByDay(summaries.flatMap((s) => s.persons), mergePersonTestSummaries),
+    testCases: mergeByDay(summaries.flatMap((s) => s.testCases), mergeTestCaseRunSummaries),
     fetched,
   }
 }

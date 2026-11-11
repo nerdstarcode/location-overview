@@ -91,8 +91,8 @@ function buildFilterFields(squads: Squad[]): FilterFieldDef[] {
   ]
 }
 
-/** Filtros que também valem para as execuções por SP (os demais descrevem os Test Cases da aba). */
-const TEST_EXECUTION_FILTERS = new Set(['squad', 'sprint', 'fiscalYear', 'iterationPath'])
+/** Filtros dos itens testados nas execuções por SP (os demais descrevem os Test Cases da aba). */
+const TEST_EXECUTION_ITEM_FILTERS = new Set(['squad', 'iterationPath'])
 
 function countBy(rows: WorkItemRow[], field: 'workItemType' | 'state'): [string, number][] {
   const counts = new Map<string, number>()
@@ -355,19 +355,30 @@ export function WorkItemsDashboard({
     [filteredRows, allowedTypes, pointTypes],
   )
 
-  // Execuções por SP: os itens de pontos da base (não os Test Cases da aba), só com os filtros de
-  // contexto (squad, sprint, ano, iteration); os de item (tipo, state, responsável) são dos Test Cases.
+  // Execuções por SP: os itens de pontos da base (não os Test Cases da aba) da squad/iteration do
+  // filtro; Sprint e Fiscal Year filtram as execuções pela sprint da data em que foram executadas.
   const testExecutions = useMemo(() => {
     if (!showTestExecutions) return null
     const active = filterFields
-      .filter((def) => TEST_EXECUTION_FILTERS.has(def.field))
+      .filter((def) => TEST_EXECUTION_ITEM_FILTERS.has(def.field))
       .map((def) => ({ def, values: filters[def.field] ?? [] }))
       .filter(({ values }) => values.length > 0)
     const pointRows = allRows.filter(
       (row) => isPointItem(row, pointTypes) && active.every(({ def, values }) => def.getValues(row).some((value) => values.includes(value))),
     )
-    return itemExecutions(pointRows, testCaseRuns)
-  }, [showTestExecutions, filterFields, filters, allRows, pointTypes, testCaseRuns])
+    const sprintsById = new Map(sprintsCatalog.map((sprint) => [sprint.id, sprint]))
+    const [selectedSprints, selectedYears] = [filters.sprint ?? [], filters.fiscalYear ?? []]
+    const runs = testCaseRuns.flatMap((run) => {
+      const sprint = sprintsById.get(run.sprintId)
+      if (!sprint) return []
+      const label = formatSprintLabel(sprint)
+      const [number, year] = label.split(' - ')
+      if (selectedSprints.length > 0 && !selectedSprints.includes(number)) return []
+      if (selectedYears.length > 0 && !selectedYears.includes(year)) return []
+      return [{ ...run, sprintLabel: label }]
+    })
+    return itemExecutions(pointRows, runs, undefined, allRows)
+  }, [showTestExecutions, filterFields, filters, allRows, pointTypes, testCaseRuns, sprintsCatalog])
   const testExecutionsCard = testExecutions && <TestExecutionsPerPoint items={testExecutions} onOpenItem={setOpenRow} />
   const detailsModal = (
     <WorkItemDetailsModal

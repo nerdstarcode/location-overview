@@ -37,9 +37,9 @@ type Story = StoryObj<typeof TestExecutionsPerPoint>
 export const PorSprint: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement)
-    // 16 execuções ÷ 16 SP dos itens com Test Case = 1.
-    await expect(canvas.getByText('Execuções por SP').closest('div')).toHaveTextContent('16 execuções ÷ 16 SP')
-    await expect(canvas.getByText('Itens com Test Case').closest('div')).toHaveTextContent('3 de 4')
+    // 16 execuções ÷ 16 SP dos itens testados = 1.
+    await expect(canvas.getByText('Execuções por SP').closest('div')).toHaveTextContent('16 execuções ÷ 16 SP testados')
+    await expect(canvas.getByText('Itens testados').closest('div')).toHaveTextContent('3')
     // O item sem Test Case fica fora da tabela.
     await expect(canvas.queryByText('Ajuste de texto')).not.toBeInTheDocument()
     await userEvent.click(canvas.getByText('Login com SSO'))
@@ -50,6 +50,6 @@ export const PorSprint: Story = {
 export const SemTestCases: Story = {
   args: { items: itemExecutions([story(104, 'Ajuste de texto', 1, 'Sprint 06')], RUNS) },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText(/Nenhum item de pontos com Test Case ligado/)).toBeInTheDocument()
+    await expect(within(canvasElement).getByText(/Nenhum item de pontos com execução de Test Case ligado/)).toBeInTheDocument()
   },
 }

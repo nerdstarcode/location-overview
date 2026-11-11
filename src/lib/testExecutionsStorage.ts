@@ -6,7 +6,10 @@ import { normalizeKey } from './text'
 export interface TestExecution {
   id: string
   squadId: string
+  /** Sprint da data em que os testes foram executados. */
   sprintId: string
+  /** Sprint sincronizada que trouxe a execução (ausente nos registros antigos: a própria sprintId). */
+  sourceSprintId?: string
   email: string
   name: string
   executed: number
@@ -26,20 +29,22 @@ export function saveTestExecutions(executions: TestExecution[]): void {
 }
 
 /**
- * Substitui as execuções da squad/sprint pelas de `incoming` (a sincronização traz o
- * retrato completo da sprint), mantendo o id de quem já existia.
+ * Substitui as execuções que a sincronização da squad/sprint `sourceSprintId` trouxe pelas de
+ * `incoming` (o retrato completo daquela sprint), cada uma já na sprint da data de execução,
+ * mantendo o id de quem já existia.
  */
 export function replaceTestExecutions(
   squadId: string,
-  sprintId: string,
-  incoming: Omit<TestExecution, 'id' | 'squadId' | 'sprintId'>[],
+  sourceSprintId: string,
+  incoming: Omit<TestExecution, 'id' | 'squadId' | 'sourceSprintId'>[],
 ): TestExecution[] {
   const all = loadTestExecutions()
-  const isTarget = (e: TestExecution) => e.squadId === squadId && e.sprintId === sprintId
-  const previousByEmail = new Map(all.filter(isTarget).map((e) => [normalizeKey(e.email), e.id]))
+  const isTarget = (e: TestExecution) => e.squadId === squadId && (e.sourceSprintId ?? e.sprintId) === sourceSprintId
+  const keyOf = (e: Pick<TestExecution, 'sprintId' | 'email'>) => `${e.sprintId}|${normalizeKey(e.email)}`
+  const previousIds = new Map(all.filter(isTarget).map((e) => [keyOf(e), e.id]))
   const next = [
     ...all.filter((e) => !isTarget(e)),
-    ...incoming.map((entry) => ({ ...entry, id: previousByEmail.get(normalizeKey(entry.email)) ?? createId(), squadId, sprintId })),
+    ...incoming.map((entry) => ({ ...entry, id: previousIds.get(keyOf(entry)) ?? createId(), squadId, sourceSprintId })),
   ]
   saveTestExecutions(next)
   return next

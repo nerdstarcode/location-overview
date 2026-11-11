@@ -5,6 +5,7 @@ import { loadSquads, saveSquads } from '../squadsStorage'
 import { loadTestReports, saveTestReports } from '../testReportsStorage'
 import { loadWorkItems } from '../workItemsStorage'
 import { loadTestCaseExecutions } from '../testCaseExecutionsStorage'
+import { loadTestExecutions } from '../testExecutionsStorage'
 import { FIXTURE_ITERATION, FIXTURE_MEMBERS, FIXTURE_TEST_RUNS_SUMMARY, FIXTURE_WORK_ITEMS } from './sprintFixtures'
 import {
   syncSprintToBase,
@@ -79,23 +80,35 @@ describe('syncSprintToBase', () => {
     expect(loadSprints()[0].totalValidDays).toBe(10)
   })
 
-  it('grava as execuções por Test Case da sprint', () => {
+  it('grava cada execução na sprint cadastrada da data em que foi executada', () => {
+    // Sprint seguinte já cadastrada: o que foi executado nela vai para ela, não para a sincronizada.
+    const next = { id: 's9', number: 9, fiscalYear: 'FY25-26', startDate: '2025-09-15', endDate: '2025-09-26', totalValidDays: 10 }
+    saveSprints([next])
     const result = syncSprintToBase({
       teamName: 'Portal',
       members: [],
       iteration: FIXTURE_ITERATION,
       workItems: [],
       testRuns: null,
+      testExecutions: [
+        { email: 'grace@example.com', name: 'Grace', executed: 2, passed: 2, failed: 0, other: 0, day: '2025-09-03' },
+        { email: 'grace@example.com', name: 'Grace', executed: 1, passed: 1, failed: 0, other: 0, day: '2025-09-16' },
+      ],
       testCaseExecutions: [
-        { testCaseId: 501, email: 'grace@example.com', name: 'Grace', executed: 2, passed: 1, failed: 1 },
-        { testCaseId: 501, email: '', name: '', executed: 1, passed: 1, failed: 0 },
+        { testCaseId: 501, email: 'grace@example.com', name: 'Grace', executed: 2, passed: 1, failed: 1, day: '2025-09-03' },
+        { testCaseId: 501, email: 'grace@example.com', name: 'Grace', executed: 1, passed: 1, failed: 0, day: '2025-09-16' },
+        // Sem data ou fora das sprints cadastradas: fica na sincronizada.
+        { testCaseId: 502, email: '', name: '', executed: 1, passed: 1, failed: 0 },
+        { testCaseId: 502, email: '', name: '', executed: 1, passed: 1, failed: 0, day: '2026-01-10' },
       ],
     })
-    expect(result.testCases).toBe(1)
-    expect(loadTestCaseExecutions()).toEqual([
-      expect.objectContaining({ testCaseId: 501, email: 'grace@example.com', executed: 2 }),
-      expect.objectContaining({ testCaseId: 501, email: '', executed: 1 }),
-    ])
+    const synced = loadSprints().find((sprint) => sprint.number === 8)!
+    expect(result.testCases).toBe(2)
+    const byTestCase = (id: number) => loadTestCaseExecutions().filter((e) => e.testCaseId === id).map((e) => [e.sprintId, e.executed])
+    expect(byTestCase(501).sort()).toEqual([[synced.id, 2], ['s9', 1]].sort())
+    expect(byTestCase(502)).toEqual([[synced.id, 2]])
+    expect(loadTestCaseExecutions().every((e) => e.sourceSprintId === synced.id)).toBe(true)
+    expect(loadTestExecutions().map((e) => [e.sprintId, e.executed]).sort()).toEqual([[synced.id, 2], ['s9', 1]].sort())
   })
 
   it('não grava relatório de testes sem runs', () => {

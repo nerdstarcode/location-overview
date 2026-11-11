@@ -10,7 +10,7 @@ import { WorkItemDetailsModal } from '../../components/organisms/WorkItemDetails
 import { useAzureConfig } from '../../contexts/azure/AzureConfigContext'
 import type { CargoTipo } from '../../lib/cargosStorage'
 import type { Person } from '../../lib/peopleStorage'
-import { computePersonDevMetrics, computePersonQaMetrics, delayInfo, peerAveragePerSprint, plannedSprintLabel, type DelayInfo } from '../../lib/personMetrics'
+import { computePersonDevMetrics, computePersonQaMetrics, delayInfo, peerAveragePerSprint, type DelayInfo } from '../../lib/personMetrics'
 import { canShowQaPersonMetrics } from '../../lib/featureFlags'
 import { devLoadBySprint, personSupportView, qaLoadBySprint, type LoadBySprint } from '../../lib/supportMetrics'
 import { itemTimelines } from '../../lib/stateFlow'
@@ -102,12 +102,18 @@ export function PersonDashboardPage() {
   // Evolução dos itens da pessoa (os mesmos dos cards: atribuídos a ela nas sprints do filtro).
   const timelines = useMemo(() => itemTimelines((devMetrics ?? qaMetrics)?.items.map((item) => item.row) ?? []), [devMetrics, qaMetrics])
 
-  // QA: itens de pontos das sprints do filtro em que a pessoa executou algum Test Case ligado (Tested By).
+  // QA: itens de pontos em que a pessoa executou algum Test Case ligado (Tested By), com as execuções
+  // feitas nas sprints do filtro (pela data de execução).
   const testExecutions = useMemo(() => {
     if (!qaMetrics || !person) return undefined
     const labels = new Set(qaMetrics.sprints.map((s) => s.label))
-    const rows = base.rows.filter((row) => isPointItem(row, config.pointTypes) && labels.has(plannedSprintLabel(row)))
-    return itemExecutions(rows, base.testCaseExecutions, person.email).filter((item) => item.executions > 0)
+    const sprintsById = new Map(base.sprints.map((sprint) => [sprint.id, formatSprintLabel(sprint)]))
+    const runs = base.testCaseExecutions.flatMap((run) => {
+      const label = sprintsById.get(run.sprintId)
+      return label && labels.has(label) ? [{ ...run, sprintLabel: label }] : []
+    })
+    const rows = base.rows.filter((row) => isPointItem(row, config.pointTypes))
+    return itemExecutions(rows, runs, person.email, base.rows).filter((item) => item.executions > 0)
   }, [qaMetrics, person, base, config.pointTypes])
 
   function openRow(row: WorkItemRow) {
