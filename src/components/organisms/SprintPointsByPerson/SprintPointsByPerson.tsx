@@ -3,7 +3,7 @@ import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
 import { ChartCard } from '../../molecules/ChartCard/ChartCard'
 import { useChartTheme } from '../../../hooks/useChartTheme'
-import { round1 } from '../../../lib/numbers'
+import { stateRank } from '../../../lib/stateColors'
 import type { PersonPoints } from '../../../lib/azure/sprintMetrics'
 
 export interface SprintPointsByPersonProps {
@@ -14,6 +14,7 @@ export interface SprintPointsByPersonProps {
 
 const BAR_HEIGHT = 32
 
+// SP de cada pessoa empilhados por State, na ordem do fluxo (New → … → Closed), para ver o andamento.
 export function SprintPointsByPerson({ people, unassigned, totalPoints }: SprintPointsByPersonProps) {
   const chart = useChartTheme()
   const rows = useMemo(() => (unassigned.itemCount > 0 ? [...people, unassigned] : people), [people, unassigned])
@@ -21,29 +22,34 @@ export function SprintPointsByPerson({ people, unassigned, totalPoints }: Sprint
   const option: EChartsOption = useMemo(() => {
     // Barras horizontais: o echarts desenha a primeira categoria embaixo, então invertemos para o maior ficar no topo.
     const ordered = [...rows].reverse()
-    const barStyle = (color: string) => ({ itemStyle: { color, ...chart.paletteBorder }, stack: 'sp', barMaxWidth: 24 })
+    const states = [...new Set(rows.flatMap((p) => Object.keys(p.byState ?? {})))].sort(
+      (a, b) => stateRank(a) - stateRank(b) || a.localeCompare(b),
+    )
+    const colors = chart.stateColors(states)
     return chart.baseOption({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
       legend: { top: 0, textStyle: chart.textStyle },
       xAxis: chart.valueAxis(),
       yAxis: chart.categoryAxis(ordered.map((p) => p.name)),
-      series: [
-        { name: 'Entregues', type: 'bar', data: ordered.map((p) => p.deliveredPoints), ...barStyle(chart.palette[2]) },
-        {
-          name: 'Em aberto',
-          type: 'bar',
-          data: ordered.map((p) => round1(p.storyPoints - p.deliveredPoints)),
-          ...barStyle(chart.palette[0]),
-          label: { show: true, position: 'right', color: chart.theme.text, formatter: ({ dataIndex }) => String(ordered[dataIndex].storyPoints) },
-        },
-      ],
+      series: states.map((state, index) => ({
+        name: state,
+        type: 'bar',
+        stack: 'sp',
+        barMaxWidth: 24,
+        itemStyle: { color: colors[index], ...chart.paletteBorder },
+        data: ordered.map((p) => p.byState?.[state] ?? 0),
+        // Total no fim da barra (só na última série da pilha).
+        ...(index === states.length - 1
+          ? { label: { show: true, position: 'right', color: chart.theme.text, formatter: ({ dataIndex }: { dataIndex: number }) => String(ordered[dataIndex].storyPoints) } }
+          : {}),
+      })),
     })
   }, [rows, chart])
 
   return (
     <ChartCard
       title="Story Points por pessoa"
-      description={`${totalPoints} SP na sprint · ${unassigned.storyPoints} SP sem responsável (${unassigned.itemCount} item(ns))`}
+      description={`${totalPoints} SP na sprint · ${unassigned.storyPoints} SP sem responsável (${unassigned.itemCount} item(ns)) · andamento por status`}
       isEmpty={rows.length === 0}
       emptyMessage="Nenhum item com story points nesta sprint."
     >

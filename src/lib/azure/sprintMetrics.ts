@@ -43,6 +43,8 @@ export interface PersonPoints {
   storyPoints: number
   deliveredPoints: number
   itemCount: number
+  /** SP por State (andamento dos itens da pessoa). */
+  byState?: Record<string, number>
 }
 
 function personPointsOf(name: string, email: string, items: WorkItemRow[]): PersonPoints {
@@ -52,6 +54,7 @@ function personPointsOf(name: string, email: string, items: WorkItemRow[]): Pers
     storyPoints: round1(sumPoints(items)),
     deliveredPoints: round1(sumPoints(items.filter(isClosed))),
     itemCount: items.length,
+    byState: Object.fromEntries(groupPoints(items, (item) => item.state, STATE_ORDER).map((group) => [group.key, group.storyPoints])),
   }
 }
 

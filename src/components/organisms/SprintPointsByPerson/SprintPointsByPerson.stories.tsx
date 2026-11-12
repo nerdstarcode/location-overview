@@ -17,7 +17,7 @@ export const ComDados: Story = {
   args: { ...FIXTURE_POINTS_BY_PERSON, totalPoints: FIXTURE_TOTAL_POINTS },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await expect(canvas.getByText('33 SP na sprint · 5 SP sem responsável (2 item(ns))')).toBeInTheDocument()
+    await expect(canvas.getByText('33 SP na sprint · 5 SP sem responsável (2 item(ns)) · andamento por status')).toBeInTheDocument()
   },
 }
 
