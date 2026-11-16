@@ -10,6 +10,7 @@ import { DataTable } from '../DataTable/DataTable'
 import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
 import { SupportByPersonChart } from '../SupportByPersonChart/SupportByPersonChart'
 import { TestExecutionsPerPoint } from '../TestExecutionsPerPoint/TestExecutionsPerPoint'
+import { TestResultsChart } from '../TestResultsChart/TestResultsChart'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
 import { DELAY_REASON_LABEL, type PersonQaItem, type PersonQaMetrics } from '../../../lib/personMetrics'
@@ -225,6 +226,14 @@ export function PersonQaDashboard({ metrics, onOpenItem, support, timelines, spr
       </ChartCard>
 
       {hasSupport && supportBySprint && <SupportByPersonChart sprintLabels={sprints.map((s) => s.label)} bySprint={supportBySprint} unit="SP" />}
+
+      {testExecutions && (
+        <TestResultsChart
+          items={testExecutions}
+          description="Resultados dos testes que a pessoa executou (Test Cases ligados aos itens por Tested By): passed × failed por sprint ou por item, com a taxa de aprovação e a média geral."
+          onOpenItem={onOpenWorkItem}
+        />
+      )}
 
       {testExecutions && (
         <TestExecutionsPerPoint

@@ -116,6 +116,20 @@ export function PersonDashboardPage() {
     return itemExecutions(rows, runs, person.email, base.rows).filter((item) => item.executions > 0)
   }, [qaMetrics, person, base, config.pointTypes])
 
+  // Dev: qualidade dos itens da pessoa (os mesmos dos cards), com os resultados de todos os testers
+  // dos Test Cases ligados a eles e às Tasks filhas, nas sprints do filtro.
+  const devTestResults = useMemo(() => {
+    if (!devMetrics) return undefined
+    const labels = new Set(devMetrics.sprints.map((s) => s.label))
+    const sprintsById = new Map(base.sprints.map((sprint) => [sprint.id, formatSprintLabel(sprint)]))
+    const runs = base.testCaseExecutions.flatMap((run) => {
+      const label = sprintsById.get(run.sprintId)
+      return label && labels.has(label) ? [{ ...run, sprintLabel: label }] : []
+    })
+    const rows = [...new Map(devMetrics.items.map((item) => [item.row.id, item.row])).values()]
+    return itemExecutions(rows, runs, undefined, base.rows).filter((item) => item.executions > 0)
+  }, [devMetrics, base])
+
   function openRow(row: WorkItemRow) {
     setOpenItem({ row, delay: delayInfo(row, new Map(base.sprints.map((sprint) => [formatSprintLabel(sprint), sprint]))) })
   }
@@ -187,6 +201,8 @@ export function PersonDashboardPage() {
           support={support}
           timelines={timelines}
           sprints={base.sprints}
+          testResults={devTestResults}
+          onOpenWorkItem={openRow}
           peerAverage={peerAverage}
           mode={mode}
           onModeChange={filters.setMode}

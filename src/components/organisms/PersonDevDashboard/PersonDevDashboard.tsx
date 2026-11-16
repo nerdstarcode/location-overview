@@ -11,9 +11,11 @@ import { Chip } from '../../atoms/Chip/Chip'
 import { DataTable } from '../DataTable/DataTable'
 import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
 import { SupportByPersonChart } from '../SupportByPersonChart/SupportByPersonChart'
+import { TestResultsChart } from '../TestResultsChart/TestResultsChart'
+import type { ItemExecutions } from '../../../lib/testExecutionsPerPoint'
 import { useChartTheme } from '../../../hooks/useChartTheme'
 import { round1 } from '../../../lib/numbers'
-import { CLOSED_STATES } from '../../../lib/workItems'
+import { CLOSED_STATES, type WorkItemRow } from '../../../lib/workItems'
 import {
   DELAY_REASON_LABEL,
   LOAD_STATUS_LABEL,
@@ -60,6 +62,9 @@ const INFO = {
 }
 
 export interface PersonDevDashboardProps {
+  /** Resultados de teste dos itens da pessoa (todos os testers), para a visão de qualidade. */
+  testResults?: ItemExecutions[]
+  onOpenWorkItem?: (row: WorkItemRow) => void
   metrics: PersonDevMetrics
   /** Média de SP/sprint das outras pessoas Dev das squads da pessoa. */
   peerAverage: number
@@ -74,7 +79,7 @@ export interface PersonDevDashboardProps {
   sprints?: Sprint[]
 }
 
-export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, onOpenItem, support, timelines, sprints: registeredSprints }: PersonDevDashboardProps) {
+export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, onOpenItem, support, timelines, sprints: registeredSprints, testResults, onOpenWorkItem }: PersonDevDashboardProps) {
   const chart = useChartTheme()
   const [onlyDelayed, setOnlyDelayed] = useState(false)
   const { sprints } = metrics
@@ -416,6 +421,14 @@ export function PersonDevDashboard({ metrics, peerAverage, mode, onModeChange, o
       </ChartCard>
 
       {hasSupport && supportBySprint && <SupportByPersonChart sprintLabels={sprints.map((s) => s.label)} bySprint={supportBySprint} unit="SP" />}
+
+      {testResults && (
+        <TestResultsChart
+          items={testResults}
+          description="Qualidade dos itens da pessoa: resultados dos testes (de qualquer tester) dos Test Cases ligados a eles e às Tasks filhas, por sprint da execução ou por item, com a taxa de aprovação e a média geral."
+          onOpenItem={onOpenWorkItem}
+        />
+      )}
 
       {timelines && (
         <ItemStateTimeline

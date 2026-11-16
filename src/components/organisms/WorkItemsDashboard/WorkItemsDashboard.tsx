@@ -21,6 +21,7 @@ import { useChartTheme } from '../../../hooks/useChartTheme'
 import { ChartCard } from '../../molecules/ChartCard/ChartCard'
 import { ItemStateTimeline } from '../ItemStateTimeline/ItemStateTimeline'
 import { TestExecutionsPerPoint } from '../TestExecutionsPerPoint/TestExecutionsPerPoint'
+import { TestResultsChart } from '../TestResultsChart/TestResultsChart'
 import { WorkItemDetailsModal } from '../WorkItemDetailsModal/WorkItemDetailsModal'
 import { loadAzureConfig } from '../../../lib/azure/azureConfigStorage'
 import { isPointItem } from '../../../lib/azure/sprintMetrics'
@@ -379,7 +380,12 @@ export function WorkItemsDashboard({
     })
     return itemExecutions(pointRows, runs, undefined, allRows)
   }, [showTestExecutions, filterFields, filters, allRows, pointTypes, testCaseRuns, sprintsCatalog])
-  const testExecutionsCard = testExecutions && <TestExecutionsPerPoint items={testExecutions} onOpenItem={setOpenRow} />
+  const testExecutionsCard = testExecutions && (
+    <>
+      <TestResultsChart items={testExecutions} onOpenItem={setOpenRow} />
+      <TestExecutionsPerPoint items={testExecutions} onOpenItem={setOpenRow} />
+    </>
+  )
   const detailsModal = (
     <WorkItemDetailsModal
       row={openRow}
@@ -665,7 +671,7 @@ export function WorkItemsDashboard({
           <ItemStateTimeline timelines={timelines} sprints={sprintsCatalog} onOpenItem={setOpenRow} />
         </div>
 
-        {testExecutionsCard && <div className="lg:col-span-2">{testExecutionsCard}</div>}
+        {testExecutionsCard && <div className="flex flex-col gap-4 lg:col-span-2">{testExecutionsCard}</div>}
       </div>
 
       {detailsModal}
