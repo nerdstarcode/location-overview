@@ -51,6 +51,13 @@ function resolveClosedDate(item: AzureWorkItem, state: string): string | undefin
   )
 }
 
+/** Campo customizado "Prioridade" (ex.: "Custom.Prioridade"): o reference name varia por organização. */
+function prioridade(item: AzureWorkItem): string {
+  const key = Object.keys(item.fields).find((field) => field.toLowerCase() === 'prioridade' || field.toLowerCase().endsWith('.prioridade'))
+  const value = key ? item.fields[key] : undefined
+  return value == null ? '' : String(value).trim()
+}
+
 const TESTED_BY = 'Microsoft.VSTS.Common.TestedBy-Forward'
 
 /** Ids dos Test Cases ligados ao item pelo link "Tested By". */
@@ -76,10 +83,12 @@ export function azureWorkItemToRow(item: AzureWorkItem, config: AzureConfig): Wo
     wsjf: fieldOrSuffix(item, config.wsjfField, 'WSJF'),
   })
   const parent = item.fields['System.Parent']
+  const priority = prioridade(item)
   const testCaseIds = testedByIds(item)
   return {
     ...row,
     parentId: typeof parent === 'number' ? parent : undefined,
+    ...(priority && { priority }),
     closedDate: resolveClosedDate(item, row.state),
     rev: item.rev,
     ...(testCaseIds.length > 0 && { testCaseIds }),

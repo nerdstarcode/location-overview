@@ -8,6 +8,7 @@ import { SprintKpis } from '../../components/organisms/SprintKpis/SprintKpis'
 import { SprintPointsByPerson } from '../../components/organisms/SprintPointsByPerson/SprintPointsByPerson'
 import { SprintBurnupChart } from '../../components/organisms/SprintBurnupChart/SprintBurnupChart'
 import { SprintPointsByTypeChart } from '../../components/organisms/SprintPointsByTypeChart/SprintPointsByTypeChart'
+import { SprintPointsByPriorityChart } from '../../components/organisms/SprintPointsByPriorityChart/SprintPointsByPriorityChart'
 import { SprintPointsByStateChart } from '../../components/organisms/SprintPointsByStateChart/SprintPointsByStateChart'
 import { SprintAllocationComparison } from '../../components/organisms/SprintAllocationComparison/SprintAllocationComparison'
 import { SprintTestRunsSummary } from '../../components/organisms/SprintTestRunsSummary/SprintTestRunsSummary'
@@ -296,6 +297,9 @@ function SprintAnalysisContent() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <SprintPointsByPerson people={byPerson} unassigned={unassigned} totalPoints={metrics.totalPoints} />
           <SprintPointsByStateChart byState={metrics.byState} />
+          <div className="lg:col-span-2">
+            <SprintPointsByPriorityChart byPriority={metrics.byPriority} />
+          </div>
           <div className="lg:col-span-2">
             <SprintBurnupChart points={metrics.burnup} />
           </div>

@@ -26,6 +26,8 @@ export interface WorkItemRow {
   isDelayed: boolean
   /** Preenchidos só na sincronização pelo Azure DevOps (a planilha não traz esses campos). */
   parentId?: number
+  /** Campo customizado "Prioridade" do Azure DevOps; só pela sincronização. */
+  priority?: string
   closedDate?: string
   /** Cada mudança de State (com a data), em ordem; vem do histórico do item na sincronização. */
   stateHistory?: StateChange[]

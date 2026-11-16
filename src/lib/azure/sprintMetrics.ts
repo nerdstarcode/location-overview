@@ -161,6 +161,15 @@ export function pointsByType(items: WorkItemRow[], pointTypes: string[]): GroupP
   return groupPoints(items, (item) => item.workItemType, pointTypes)
 }
 
+/** Itens de pontos pelo campo "Prioridade" (ordem natural dos valores; sem prioridade por último). */
+export function pointsByPriority(items: WorkItemRow[], pointTypes: string[]): GroupPoints[] {
+  const pointItems = items.filter((item) => isPointItem(item, pointTypes))
+  const order = [...new Set(pointItems.map((item) => item.priority ?? '').filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR', { numeric: true }),
+  )
+  return groupPoints(pointItems, (item) => item.priority || 'Sem prioridade', order)
+}
+
 export function pointsByState(items: WorkItemRow[], pointTypes: string[]): GroupPoints[] {
   return groupPoints(
     items.filter((item) => isPointItem(item, pointTypes)),
@@ -182,6 +191,8 @@ export interface UserStoryTasks {
   effort: number
   timeCriticality: number
   wsjf: number
+  /** Campo "Prioridade" do Azure; vazio quando o item não tem. */
+  priority?: string
   tasks: number
   tasksDone: number
   /** Oculto na Análise da Sprint: aparece apagado na tabela e fica fora dos KPIs e gráficos. */
@@ -209,6 +220,7 @@ export function tasksPerUserStory(
         effort: story.effort ?? 0,
         timeCriticality: story.timeCriticality ?? 0,
         wsjf: story.wsjf ?? 0,
+        priority: story.priority,
         tasks: children.length,
         tasksDone: children.filter(isClosed).length,
         hidden: hiddenIds.has(story.id),
@@ -457,6 +469,7 @@ export interface SprintMetrics {
   burnup: BurnupPoint[]
   byType: GroupPoints[]
   byState: GroupPoints[]
+  byPriority: GroupPoints[]
   userStories: UserStoryTasks[]
   allocation: AllocationComparisonRow[]
   /** Alocação cadastrada da squad/sprint local — vazia quando squad ou sprint não existem na base. */
@@ -494,6 +507,7 @@ export function computeSprintMetrics({
     burnup: burnup(items, pointTypes, workingDays),
     byType: pointsByType(items, pointTypes),
     byState: pointsByState(items, pointTypes),
+    byPriority: pointsByPriority(items, pointTypes),
     userStories: tasksPerUserStory(allItems, pointTypes, hiddenIds),
     allocation: allocationComparison({ ...allocationInput, personPoints: people, totalPoints }),
     sprintAllocation: sprintAllocation(allocationInput, people),

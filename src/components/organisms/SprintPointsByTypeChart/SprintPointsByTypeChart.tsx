@@ -47,6 +47,12 @@ const USER_STORY_COLUMNS: ColumnDef<UserStoryTasks, unknown>[] = [
   { accessorKey: 'title', header: 'Título', meta: { minWidth: 240 } },
   { accessorKey: 'state', header: 'State' },
   { accessorKey: 'assignedTo', header: 'Assigned To' },
+  {
+    id: 'priority',
+    header: 'Prioridade',
+    accessorFn: (row) => row.priority ?? '',
+    cell: ({ row }) => row.original.priority || '—',
+  },
   { accessorKey: 'storyPoints', header: 'Story Points', meta: NUMERIC },
   { accessorKey: 'effort', header: 'Effort', meta: NUMERIC },
   { accessorKey: 'timeCriticality', header: 'Time Criticality', meta: NUMERIC },
