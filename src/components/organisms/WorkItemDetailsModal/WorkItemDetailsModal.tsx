@@ -6,8 +6,8 @@ import { Chip } from '../../atoms/Chip/Chip'
 import { RequestState } from '../../molecules/RequestState/RequestState'
 import { useAzureConfig } from '../../../contexts/azure/AzureConfigContext'
 import { useAzureRequest } from '../../../hooks/azure/useAzureRequest'
-import { getWorkItemComments, getWorkItemUpdates } from '../../../lib/azure/api'
-import { workItemTimeline, type WorkItemEvent, type WorkItemEventKind } from '../../../lib/azure/mappers'
+import { getWorkItem, getWorkItemComments, getWorkItemUpdates } from '../../../lib/azure/api'
+import { htmlToText, workItemTimeline, type WorkItemEvent, type WorkItemEventKind } from '../../../lib/azure/mappers'
 import { formatDateBR } from '../../../lib/dates'
 import { DELAY_REASON_LABEL, type DelayInfo } from '../../../lib/personMetrics'
 import { splitTags, type WorkItemRow } from '../../../lib/workItems'
@@ -48,6 +48,43 @@ function TimelineItem({ event }: { event: WorkItemEvent }) {
       </p>
       {event.text && <p className="whitespace-pre-line text-sm text-[var(--text-h)]">{event.text}</p>}
     </li>
+  )
+}
+
+function TextBlock({ title, text }: { title: string; text: string }) {
+  return (
+    <div>
+      <h3 className="mb-1 text-xs font-semibold text-[var(--text-h)]">{title}</h3>
+      <p className="whitespace-pre-line rounded-md bg-[var(--code-bg)] p-3 text-sm text-[var(--text-h)]">{text || 'Não preenchido.'}</p>
+    </div>
+  )
+}
+
+/** Descrição e critérios de aceite, buscados no Azure sob demanda. */
+function WorkItemTexts({ row }: { row: WorkItemRow }) {
+  const texts = useAzureRequest({
+    key: `texts|${row.id}`,
+    fetch: async (cfg, signal) => {
+      const item = await getWorkItem(cfg, row.id, signal)
+      const field = (name: string) => (typeof item.fields[name] === 'string' ? htmlToText(item.fields[name] as string) : '')
+      return { description: field('System.Description'), acceptance: field('Microsoft.VSTS.Common.AcceptanceCriteria') }
+    },
+  })
+  return (
+    <RequestState
+      loading={texts.loading}
+      error={texts.error}
+      empty={!texts.data}
+      loadingMessage="Buscando descrição e critérios de aceite…"
+      onRetry={texts.reload}
+    >
+      {texts.data && (
+        <div className="flex flex-col gap-3">
+          <TextBlock title="Descrição" text={texts.data.description} />
+          <TextBlock title="Critérios de aceite" text={texts.data.acceptance} />
+        </div>
+      )}
+    </RequestState>
   )
 }
 
@@ -105,6 +142,7 @@ export interface WorkItemDetailsModalProps {
 export function WorkItemDetailsModal({ row, delay, allRows, onClose }: WorkItemDetailsModalProps) {
   const { config, isConfigured } = useAzureConfig()
   const [historyFor, setHistoryFor] = useState<number | null>(null)
+  const [textsFor, setTextsFor] = useState<number | null>(null)
 
   const parent = useMemo(() => (row?.parentId ? allRows.find((r) => r.id === row.parentId) : undefined), [row, allRows])
   const children = useMemo(() => (row ? allRows.filter((r) => r.parentId === row.id) : []), [row, allRows])
@@ -167,6 +205,11 @@ export function WorkItemDetailsModal({ row, delay, allRows, onClose }: WorkItemD
         )}
 
         <div className="flex flex-wrap items-center gap-3">
+          {isConfigured && textsFor !== row.id && (
+            <Button type="button" variant="secondary" onClick={() => setTextsFor(row.id)}>
+              Carregar descrição e critérios de aceite
+            </Button>
+          )}
           {isConfigured && historyFor !== row.id && (
             <Button type="button" variant="secondary" onClick={() => setHistoryFor(row.id)}>
               Buscar histórico no Azure
@@ -185,6 +228,7 @@ export function WorkItemDetailsModal({ row, delay, allRows, onClose }: WorkItemD
           )}
         </div>
 
+        {textsFor === row.id && <WorkItemTexts row={row} />}
         {historyFor === row.id && <WorkItemHistory row={row} />}
       </div>
     </Modal>

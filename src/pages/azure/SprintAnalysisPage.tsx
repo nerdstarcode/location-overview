@@ -16,9 +16,20 @@ import { SprintAllocationView } from '../../components/organisms/SprintAllocatio
 import { ItemStateTimeline } from '../../components/organisms/ItemStateTimeline/ItemStateTimeline'
 import { StateFlowTable } from '../../components/organisms/StateFlowTable/StateFlowTable'
 import { WorkItemDetailsModal } from '../../components/organisms/WorkItemDetailsModal/WorkItemDetailsModal'
+import { SprintDailyView } from '../../components/organisms/SprintDailyView/SprintDailyView'
+import { SegmentedControl } from '../../components/molecules/SegmentedControl/SegmentedControl'
+import { buildDaily } from '../../lib/azure/dailyView'
+import { loadWorkItems } from '../../lib/workItemsStorage'
+import { loadSquads } from '../../lib/squadsStorage'
+import { loadPeople } from '../../lib/peopleStorage'
+import { loadPersonAllocations } from '../../lib/personAllocationsStorage'
+import { loadCargos } from '../../lib/cargosStorage'
+import { loadLevels } from '../../lib/levelsStorage'
+import { loadTestCaseExecutions } from '../../lib/testCaseExecutionsStorage'
 import { useAzureRequest } from '../../hooks/azure/useAzureRequest'
 import { stateHistoriesFor } from '../../lib/azure/syncToBase'
-import { iterationSprintInfo } from '../../lib/azure/mappers'
+import { azureWorkItemToRow, iterationSprintInfo } from '../../lib/azure/mappers'
+import { getWorkItemsByIds } from '../../lib/azure/api'
 import { relevantTestRuns, testRunResultSummaries } from '../../lib/azure/testRunResults'
 import { itemExecutions } from '../../lib/testExecutionsPerPoint'
 import { TestExecutionsPerPoint } from '../../components/organisms/TestExecutionsPerPoint/TestExecutionsPerPoint'
@@ -199,6 +210,71 @@ function StateFlowSection() {
   )
 }
 
+function loadDailyBase() {
+  return {
+    workItems: loadWorkItems(),
+    squads: loadSquads(),
+    sprints: loadSprints(),
+    people: loadPeople(),
+    allocations: loadPersonAllocations(),
+    cargos: loadCargos(),
+    levels: loadLevels(),
+    testCaseExecutions: loadTestCaseExecutions(),
+  }
+}
+
+/** Passagem da daily: pessoa a pessoa, com as outras squads pela base local sincronizada. */
+function DailySection() {
+  const { config } = useAzureConfig()
+  const { projectId, team, workItems, localSquad, localSprint, hiddenIds } = useSprintAnalysis()
+  const [openRow, setOpenRow] = useState<WorkItemRow | null>(null)
+  // Relê a base local quando os work items ao vivo mudam (Atualizar / Salvar na base).
+  const base = useMemo(() => loadDailyBase(), [workItems.data]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Test Cases ligados (Tested By) aos itens da sprint e da base: o responsável de cada um define a faixa dos QAs.
+  const testCaseIds = useMemo(
+    () => [...new Set([...(workItems.data ?? []), ...base.workItems].flatMap((row) => row.testCaseIds ?? []))].sort((a, b) => a - b),
+    [workItems.data, base],
+  )
+  const testCases = useAzureRequest(
+    testCaseIds.length > 0
+      ? {
+          key: `daily-test-cases|${projectId}|${testCaseIds.join(',')}`,
+          fetch: async (cfg, signal) => (await getWorkItemsByIds(cfg, projectId, testCaseIds, signal)).map((item) => azureWorkItemToRow(item, cfg)),
+        }
+      : null,
+  )
+  const view = useMemo(
+    () =>
+      buildDaily({
+        liveItems: workItems.data ?? [],
+        liveSquadName: localSquad?.name ?? team?.name ?? 'Squad atual',
+        localSquad,
+        localSprint,
+        pointTypes: config.pointTypes,
+        qaMinPercent: config.qaMinPercent,
+        qaMaxPercent: config.qaMaxPercent,
+        hiddenIds,
+        testCases: testCases.data ?? undefined,
+        base,
+      }),
+    [workItems.data, localSquad, localSprint, team, config, hiddenIds, base, testCases.data],
+  )
+  return (
+    <>
+      {testCases.loading && <p className="text-xs text-[var(--text)]">Buscando os Test Cases para a faixa dos QAs…</p>}
+      {testCases.error && <p className="text-xs text-[var(--text)]">Não deu para buscar os Test Cases: {String(testCases.error)}</p>}
+      <SprintDailyView view={view} onOpenItem={setOpenRow} />
+      <WorkItemDetailsModal row={openRow} allRows={workItems.data ?? []} onClose={() => setOpenRow(null)} />
+    </>
+  )
+}
+
+type PageView = 'analysis' | 'daily'
+const PAGE_VIEW_OPTIONS = [
+  { value: 'analysis' as const, label: 'Análise' },
+  { value: 'daily' as const, label: 'Daily' },
+]
+
 function SprintAnalysisContent() {
   const { config } = useAzureConfig()
   const { projectId, team, iteration, workItems, members, workingDays, localSquad, localSprint, metrics, loading, refresh, saveToBase, updateSprintDays, toggleHidden } =
@@ -206,6 +282,7 @@ function SprintAnalysisContent() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [showAllocation, setShowAllocation] = usePersistedState('sprint-analysis-show-allocation', false)
   const [onlyAllocated, setOnlyAllocated] = usePersistedState('sprint-analysis-only-allocated', false)
+  const [pageView, setPageView] = usePersistedState<PageView>('sprint-analysis-view', 'analysis')
 
   // "Somente pessoas alocadas": as visões por pessoa passam a partir da Alocação da squad/sprint local —
   // inclusive quem está alocado mas não é membro do team no Azure ou não tem SP na sprint (aparece com 0).
@@ -258,6 +335,10 @@ function SprintAnalysisContent() {
         </p>
       )}
 
+      <div className="flex justify-end">
+        <SegmentedControl aria-label="Visão da sprint" options={PAGE_VIEW_OPTIONS} value={pageView} onChange={setPageView} />
+      </div>
+
       <RequestState
         loading={loading}
         error={workItems.error ?? members.error}
@@ -266,6 +347,10 @@ function SprintAnalysisContent() {
         loadingMessage="Buscando work items da sprint…"
         onRetry={refresh}
       >
+        {pageView === 'daily' ? (
+          <DailySection />
+        ) : (
+        <>
         <SprintKpis metrics={metrics} workItemsCount={workItems.data?.length ?? 0} membersCount={members.data?.length ?? 0} />
 
         <div className="flex flex-wrap items-center gap-4">
@@ -326,6 +411,8 @@ function SprintAnalysisContent() {
             <TestRunsSection />
           </div>
         </div>
+        </>
+        )}
       </RequestState>
     </div>
   )

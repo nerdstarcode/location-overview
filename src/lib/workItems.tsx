@@ -28,6 +28,10 @@ export interface WorkItemRow {
   parentId?: number
   /** Campo customizado "Prioridade" do Azure DevOps; só pela sincronização. */
   priority?: string
+  /** Descrição (texto, sem HTML); só ao vivo pelo Azure — não é gravada na base local. */
+  description?: string
+  /** Quando o item entrou no State atual (System.StateChangeDate); só pela sincronização. */
+  stateChangedDate?: string
   closedDate?: string
   /** Cada mudança de State (com a data), em ordem; vem do histórico do item na sincronização. */
   stateHistory?: StateChange[]

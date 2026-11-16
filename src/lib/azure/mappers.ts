@@ -84,11 +84,15 @@ export function azureWorkItemToRow(item: AzureWorkItem, config: AzureConfig): Wo
   })
   const parent = item.fields['System.Parent']
   const priority = prioridade(item)
+  const description = htmlToText(stringField(item, 'System.Description'))
+  const stateChangedDate = stringField(item, 'Microsoft.VSTS.Common.StateChangeDate')
   const testCaseIds = testedByIds(item)
   return {
     ...row,
     parentId: typeof parent === 'number' ? parent : undefined,
     ...(priority && { priority }),
+    ...(description && { description }),
+    ...(stateChangedDate && { stateChangedDate }),
     closedDate: resolveClosedDate(item, row.state),
     rev: item.rev,
     ...(testCaseIds.length > 0 && { testCaseIds }),

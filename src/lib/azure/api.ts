@@ -122,6 +122,11 @@ async function getWorkItemsBatch(
   return items
 }
 
+/** Work items por id (ex.: os Test Cases ligados), em lotes. */
+export function getWorkItemsByIds(config: AzureConfig, project: string, ids: number[], signal?: AbortSignal): Promise<AzureWorkItem[]> {
+  return ids.length > 0 ? getWorkItemsBatch(config, project, ids, signal) : Promise.resolve([])
+}
+
 export async function getIterationWorkItems(
   config: AzureConfig,
   project: string,
@@ -198,6 +203,11 @@ export async function listTestRunResults(
     results.push(...value)
     if (value.length < TEST_RESULTS_PAGE_SIZE) return results
   }
+}
+
+/** Um work item com todos os campos (descrição, critérios de aceite…). */
+export function getWorkItem(config: AzureConfig, id: number, signal?: AbortSignal): Promise<AzureWorkItem> {
+  return azureFetch<AzureWorkItem>(config, `_apis/wit/workitems/${id}`, { signal })
 }
 
 export async function getWorkItemUpdates(config: AzureConfig, id: number, signal?: AbortSignal): Promise<AzureWorkItemUpdate[]> {

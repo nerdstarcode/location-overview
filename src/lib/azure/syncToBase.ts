@@ -106,7 +106,8 @@ export function upsertSprintFromIteration(iteration: AzureIteration): { sprint: 
 
 /** Upsert por ID sobre a base de Work Items (mesma regra da importação por planilha). */
 export function upsertWorkItems(rows: WorkItemRow[]): number {
-  saveWorkItems(mergeWorkItems(loadWorkItems(), rows))
+  // A descrição pode ser longa: fica só na visão ao vivo, para não estourar o localStorage.
+  saveWorkItems(mergeWorkItems(loadWorkItems(), rows.map((row) => ({ ...row, description: undefined }))))
   return rows.length
 }
 
