@@ -1,10 +1,11 @@
 import clsx from 'clsx'
-import { createContext, useContext } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { DailyPerson, DailySquad, DailyStory, DailyView } from '../../../lib/azure/dailyView'
 import { splitTags, type WorkItemRow } from '../../../lib/workItems'
 import { businessDaysBetween, formatDuration } from '../../../lib/stateFlow'
 import { usePersistedState } from '../../../hooks/usePersistedState'
+import { useChartTheme } from '../../../hooks/useChartTheme'
 import { Checkbox } from '../../atoms/Checkbox/Checkbox'
 import { DailyPointsByPersonChart, DailyTestsByStoryChart } from './DailyCharts'
 
@@ -58,6 +59,22 @@ function TaskCard({ task, mine, onOpenItem }: { task: WorkItemRow; mine: boolean
   )
 }
 
+/** Badge do State com a cor padrão do app (a mesma dos gráficos), igual em todo lugar. */
+function StateBadge({ state, title, children }: { state: string; title?: string; children?: ReactNode }) {
+  const chart = useChartTheme()
+  const color = chart.stateColors([state])[0]
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-[var(--text-h)]"
+      style={{ borderColor: color, backgroundColor: `color-mix(in srgb, ${color} 18%, transparent)` }}
+      title={title}
+    >
+      <span className="size-2 rounded-full" style={{ backgroundColor: color }} />
+      {children ?? state}
+    </span>
+  )
+}
+
 export interface SprintDailyViewProps {
   view: DailyView
   onOpenItem?: (row: WorkItemRow) => void
@@ -104,14 +121,17 @@ function StoryBlock({ entry, highlight, onOpenItem }: { entry: DailyStory; highl
         <ChevronRight size={14} className="chev shrink-0" />
         {entry.row ? (
           <>
-            <span
-              className="shrink-0 rounded bg-[var(--code-bg)] px-1.5 py-0.5 text-xs"
+            <StateBadge
+              state={entry.row.state}
               title={entry.row.stateChangedDate ? `No State "${entry.row.state}" desde ${new Date(entry.row.stateChangedDate).toLocaleString('pt-BR')} (tempo útil)` : undefined}
             >
               {entry.row.state}
               {timeInState(entry.row, new Date()) && <> · ⏱ {timeInState(entry.row, new Date())}</>}
-            </span>
+            </StateBadge>
             <DelayedBadge row={entry.row} />
+            <span className="shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs font-medium text-[var(--text-h)]" title="Story Points">
+              {entry.row.storyPoints} SP
+            </span>
             <ItemLink row={entry.row} onOpenItem={onOpenItem} className="min-w-0 truncate text-sm text-[var(--text-h)]" />
             {entry.row.assignedTo && <span className="shrink-0 text-xs text-[var(--text)]">· {entry.row.assignedTo}</span>}
           </>
@@ -132,7 +152,7 @@ function StoryBlock({ entry, highlight, onOpenItem }: { entry: DailyStory; highl
         {entry.columns.map((column) => (
           <div key={column.state} className="flex w-56 shrink-0 flex-col gap-1.5 rounded-md bg-[var(--code-bg)] p-2">
             <p className="text-xs font-medium text-[var(--text-h)]">
-              {column.state} <span className="text-[var(--text)]">({column.tasks.length})</span>
+              <StateBadge state={column.state} /> <span className="text-[var(--text)]">({column.tasks.length})</span>
             </p>
             {column.tasks.map((task) => (
               <TaskCard key={task.id} task={task} mine={isMine(task)} onOpenItem={onOpenItem} />
@@ -152,7 +172,7 @@ function StoryBlock({ entry, highlight, onOpenItem }: { entry: DailyStory; highl
                 <li key={tc.id} className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-[var(--text)]">#{tc.id}</span>
                   <span className="text-[var(--text-h)]">{tc.title || 'Test Case'}</span>
-                  {tc.state && <span className="rounded bg-[var(--code-bg)] px-1">{tc.state}</span>}
+                  {tc.state && <StateBadge state={tc.state} />}
                   <span className={clsx(tc.email.trim().toLowerCase() === highlight ? 'font-semibold text-[var(--accent)]' : 'text-[var(--text)]')}>
                     {tc.assignedTo || 'Sem responsável'}
                   </span>

@@ -17,7 +17,7 @@ import {
 import type { Sprint } from '../../../lib/sprintsStorage'
 import type { WorkItemRow } from '../../../lib/workItems'
 
-const STAGES: FlowStage[] = ['active', 'testingQa', 'testingProd', 'onHold', 'fail', 'other']
+const STAGES: FlowStage[] = ['active', 'testingQa', 'mrProd', 'testingProd', 'onHold', 'fail', 'other']
 const DONE_SERIES = 'Done / Closed'
 const SPRINTS_SERIES = 'Sprints (início / fim)'
 /** Altura de cada item no gráfico; acima de MAX_VISIBLE itens, rola com o controle lateral. */
@@ -163,11 +163,11 @@ export function ItemStateTimeline({ timelines, onOpenItem, title = 'Evolução p
   return (
     <ChartCard
       title={title}
-      description="Passagem do tempo de cada item desde o primeiro Active: Active → Testing QA → Testing Prod → Done/Closed (◆). On Hold, Fail e outros estados aparecem com cores próprias. Linhas verticais: início (sólida) e fim (tracejada) das sprints cadastradas. Passe o mouse para ver datas e o tempo útil (em horas quando é menos de 1 dia); clique para abrir o item."
+      description="Passagem do tempo de cada item desde o primeiro Active: Active → Testing QA → MR Prod → Testing Prod → Done/Closed (◆). On Hold, Fail e outros estados aparecem com cores próprias. Linhas verticais: início (sólida) e fim (tracejada) das sprints cadastradas. Passe o mouse para ver datas e o tempo útil (em horas quando é menos de 1 dia); clique para abrir o item."
       isEmpty={timelines.length === 0}
       emptyMessage="Nenhum item com histórico de estados a partir do Active."
     >
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         {EVOLUTION_STAGES.map((stage) => (
           <StatCard
             key={stage}

@@ -103,6 +103,9 @@ export interface PersonStatePoints {
   name: string
   byState: Record<string, number>
   total: number
+  /** Capacity/Max da pessoa na squad atual (alocação da base local). */
+  capacity?: number
+  max?: number
 }
 
 export interface StoryTests {
@@ -182,15 +185,15 @@ function indexItems(items: WorkItemRow[], pointTypes: string[]): SquadItems {
 
 /**
  * USs atribuídas à pessoa ou com task dela + tasks soltas dela ("Sem US"). QAs (`withTestCases`)
- * normalmente não têm tasks: veem também toda US da squad com Test Case ligado (Tested By).
+ * normalmente não têm tasks: veem também as USs com algum Test Case ligado (Tested By) que executaram.
  */
-function personStories(index: SquadItems, email: string, withTestCases = false): { stories: DailyStory[]; own: WorkItemRow[] } {
+function personStories(index: SquadItems, email: string, testedBy?: (testCaseId: number) => boolean): { stories: DailyStory[]; own: WorkItemRow[] } {
   const mine = (item: WorkItemRow) => emailKey(item.email) === email
   const stories: DailyStory[] = []
   const own: WorkItemRow[] = []
   for (const row of index.stories) {
     const tasks = index.tasksByParent.get(row.id) ?? []
-    const tested = withTestCases && [row, ...tasks].some((item) => (item.testCaseIds?.length ?? 0) > 0)
+    const tested = testedBy !== undefined && [row, ...tasks].some((item) => (item.testCaseIds ?? []).some(testedBy))
     if (!mine(row) && !tasks.some(mine) && !tested) continue
     stories.push(story(row, tasks))
     own.push(...tasks.filter(mine))
@@ -272,12 +275,24 @@ export function buildDaily(input: DailyInput): DailyView {
   const sprintForMatch = localSprint
   const people: DailyPerson[] = [...participants.entries()].map(([key, { name, email, person }]) => {
     const isQa = isQaPerson(person, base.cargos)
+    const qaExecutions = new Map<number, TestCounts>()
+    if (isQa) {
+      for (const run of base.testCaseExecutions) {
+        if (!sprintIds.has(run.sprintId) || emailKey(run.email) !== key) continue
+        const counts = qaExecutions.get(run.testCaseId) ?? { executed: 0, passed: 0, failed: 0 }
+        counts.executed += run.executed
+        counts.passed += run.passed
+        counts.failed += run.failed
+        qaExecutions.set(run.testCaseId, counts)
+      }
+    }
     const mineAllocations = person ? sprintAllocations.filter((a) => a.personId === person.id) : []
     const livePercentage = mineAllocations.filter((a) => isLiveSquad(a.squadId)).reduce((sum, a) => sum + a.percentage, 0)
 
     const toSquad = (squadKey: string, squadName: string, live: boolean, index: SquadItems | null, percentage: number | null): DailySquad => {
-      const { stories, own } = index ? personStories(index, key, isQa) : { stories: [], own: [] }
-      if (isQa) for (const entry of stories) entry.testCases = testCasesFor(entry, titles, executions)
+      const { stories, own } = index ? personStories(index, key, isQa ? (id) => qaExecutions.has(id) : undefined) : { stories: [], own: [] }
+      // QA: só os Test Cases que ele executou na sprint, com as execuções dele.
+      if (isQa) for (const entry of stories) entry.testCases = testCasesFor(entry, titles, qaExecutions).filter((tc) => tc.executed > 0)
       const points =
         percentage !== null && localSprint ? pointsForEntry({ percentage }, localSprint, person, base.levels) : { capacity: 0, max: 0 }
       const capacity = round1(points.capacity)
@@ -290,16 +305,16 @@ export function buildDaily(input: DailyInput): DailyView {
       let status: AllocationStatus | null = null
       if (isQa) {
         // Faixa QA: SP das USs em que a pessoa é responsável por algum Test Case ligado.
-        assigned = ownedSp(storyRows.filter((row) => entry(row)?.testCases?.some((tc) => emailKey(tc.email) === key)))
+        // Faixa QA: SP das USs em que a pessoa é responsável por algum Test Case ligado (executado ou não).
+        const ownsTestCase = (row: WorkItemRow) =>
+          [row, ...(index?.tasksByParent.get(row.id) ?? [])].some((item) => (item.testCaseIds ?? []).some((id) => emailKey(titles.get(id)?.email) === key))
+        assigned = ownedSp((index?.stories ?? []).filter(ownsTestCase))
         expectedMin = round1((assigned * input.qaMinPercent) / 100)
         expectedMax = round1((assigned * input.qaMaxPercent) / 100)
         if (percentage !== null) status = classifyQaTop(expectedMax, capacity, max)
       } else {
         assigned = ownedSp(storyRows.filter((row) => emailKey(row.email) === key))
         if (percentage !== null) status = assigned < capacity ? 'abaixo' : max > 0 && assigned > max ? 'acima' : 'dentro'
-      }
-      function entry(row: WorkItemRow) {
-        return stories.find((s) => s.row?.id === row.id)
       }
       // Execuções da própria pessoa nesta squad, na sprint (pela data de execução).
       const runs = isQa
@@ -390,6 +405,11 @@ export function buildDaily(input: DailyInput): DailyView {
   const pointsByPerson = [...pointsMap.values()].sort(
     (a, b) => Number(a.name === 'Sem responsável') - Number(b.name === 'Sem responsável') || b.total - a.total,
   )
+  for (const entry of pointsByPerson) {
+    const person = people.find((p) => normalizeKey(p.name) === normalizeKey(entry.name))
+    const squad = person?.squads.find((sq) => sq.live)
+    if (squad && squad.max > 0) Object.assign(entry, { capacity: squad.capacity, max: squad.max })
+  }
   const states = [...stateSet].sort((a, b) => stateRank(a) - stateRank(b) || a.localeCompare(b))
 
   // Testes executados por US, por quem executou (execuções da sprint na base local).

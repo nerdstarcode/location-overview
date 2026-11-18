@@ -4,16 +4,17 @@ import { normalizeKey } from './text'
 import { CLOSED_STATES, type StateChange, type WorkItemRow } from './workItems'
 
 // Fluxo de estados dos work items, em dias úteis: quando entraram em Active e quanto levaram desde
-// então até chegar em Testing QA, Testing Prod e Done/Closed; quanto ficaram em On Hold e quantas
+// então até chegar em Testing QA, MR Prod, Testing Prod e Done/Closed; quanto ficaram em On Hold e quantas
 // vezes foram para Fail. Usa o histórico de State gravado na sincronização (`stateHistory`).
 
-export type FlowMilestone = 'testingQa' | 'testingProd' | 'done'
+export type FlowMilestone = 'testingQa' | 'mrProd' | 'testingProd' | 'done'
 
-export const FLOW_MILESTONES: FlowMilestone[] = ['testingQa', 'testingProd', 'done']
+export const FLOW_MILESTONES: FlowMilestone[] = ['testingQa', 'mrProd', 'testingProd', 'done']
 
 const ACTIVE_STATES = new Set(['active', 'doing', 'in progress'])
 const MILESTONE_STATES: Record<FlowMilestone, Set<string>> = {
   testingQa: new Set(['testing qa']),
+  mrProd: new Set(['mr prod']),
   testingProd: new Set(['testing prod']),
   done: new Set([...CLOSED_STATES].map(normalizeKey)),
 }
@@ -118,15 +119,16 @@ export function itemFlows(rows: WorkItemRow[], sprintStartOf: (label: string) =>
 // ---------------------------------------------------------------------------
 // Linha do tempo por item: Active → Testing QA → Testing Prod → Done/Closed
 
-export type FlowStage = 'active' | 'testingQa' | 'testingProd' | 'onHold' | 'fail' | 'other'
+export type FlowStage = 'active' | 'testingQa' | 'mrProd' | 'testingProd' | 'onHold' | 'fail' | 'other'
 
 /** Etapas da evolução, na ordem; On Hold, Fail e outros estados ficam fora das médias por etapa. */
-export const EVOLUTION_STAGES = ['active', 'testingQa', 'testingProd'] as const
+export const EVOLUTION_STAGES = ['active', 'testingQa', 'mrProd', 'testingProd'] as const
 export type EvolutionStage = (typeof EVOLUTION_STAGES)[number]
 
 export const FLOW_STAGE_LABEL: Record<FlowStage, string> = {
   active: 'Active',
   testingQa: 'Testing QA',
+  mrProd: 'MR Prod',
   testingProd: 'Testing Prod',
   onHold: 'On Hold',
   fail: 'Fail',
@@ -137,10 +139,11 @@ export const FLOW_STAGE_LABEL: Record<FlowStage, string> = {
 export const FLOW_STAGE_STATE: Record<FlowStage, string> = {
   active: 'Active',
   testingQa: 'Testing QA',
+  mrProd: 'MR Prod',
   testingProd: 'Testing Prod',
   onHold: 'On Hold',
   fail: 'Fail',
-  other: 'MR Prod',
+  other: 'Resolved',
 }
 
 const BEFORE_ACTIVE_STATES = new Set(['new', 'proposed', 'ready'])
@@ -149,6 +152,7 @@ function stageOf(state: string): FlowStage | 'done' | 'skip' {
   const key = normalizeKey(state)
   if (ACTIVE_STATES.has(key)) return 'active'
   if (MILESTONE_STATES.testingQa.has(key)) return 'testingQa'
+  if (MILESTONE_STATES.mrProd.has(key)) return 'mrProd'
   if (MILESTONE_STATES.testingProd.has(key)) return 'testingProd'
   if (MILESTONE_STATES.done.has(key)) return 'done'
   if (key === ON_HOLD) return 'onHold'

@@ -31,6 +31,7 @@ const COLUMNS: ColumnDef<ItemFlow, unknown>[] = [
   },
   daysColumn('sprintToActive', 'Início → Active', (flow) => flow.sprintToActive),
   daysColumn('testingQa', '→ Testing QA', (flow) => flow.toMilestone.testingQa),
+  daysColumn('mrProd', '→ MR Prod', (flow) => flow.toMilestone.mrProd),
   daysColumn('testingProd', '→ Testing Prod', (flow) => flow.toMilestone.testingProd),
   daysColumn('done', '→ Done', (flow) => flow.toMilestone.done),
   daysColumn('onHold', 'On Hold', (flow) => flow.onHoldDays),

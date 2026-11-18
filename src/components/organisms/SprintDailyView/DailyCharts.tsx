@@ -15,7 +15,8 @@ export function DailyPointsByPersonChart({ data, states }: { data: PersonStatePo
       legend: { top: 0, textStyle: chart.textStyle },
       xAxis: chart.categoryAxis(data.map((p) => p.name), { axisLabel: { ...chart.textStyle, interval: 0, rotate: data.length > 6 ? 30 : 0 } }),
       yAxis: chart.valueAxis({ name: 'SP' }),
-      series: states.map((state, index) => ({
+      series: [
+        ...states.map((state, index) => ({
         name: state,
         type: 'bar' as const,
         stack: 'sp',
@@ -23,13 +24,23 @@ export function DailyPointsByPersonChart({ data, states }: { data: PersonStatePo
         data: data.map((p) => p.byState[state] ?? 0),
         itemStyle: { color: colors[index], ...chart.paletteBorder },
         label: { show: true, color: '#fff', formatter: (p: { value: unknown }) => (Number(p.value) > 0 ? String(p.value) : '') },
-      })),
+        })),
+        ...(['capacity', 'max'] as const).map((key) => ({
+          name: key === 'capacity' ? 'Capacity' : 'Max',
+          type: 'scatter' as const,
+          symbol: 'rect',
+          symbolSize: [36, 3],
+          z: 10,
+          data: data.map((p) => p[key] ?? null),
+          itemStyle: { color: key === 'capacity' ? '#16a34a' : '#dc2626' },
+        })),
+      ],
     })
   }, [data, states, chart])
   return (
     <ChartCard
       title="Story Points por pessoa e State"
-      description="Distribuição dos SP da sprint (team atual) por responsável, empilhados pelo State de cada item."
+      description="Distribuição dos SP da sprint (team atual) por responsável, empilhados pelo State de cada item. Marcadores: Capacity (verde) e Max (vermelho) da pessoa nesta squad, pela alocação da base local."
       isEmpty={data.length === 0}
       emptyMessage="Nenhum item de pontos nesta sprint."
     >

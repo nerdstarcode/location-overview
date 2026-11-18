@@ -147,6 +147,9 @@ function TestExecutionsSection() {
   )
 }
 
+/** Estados de backlog que ficam fora da Evolução por item. */
+const NOT_STARTED_STATES = new Set(['prioritized', 'for prioritization'])
+
 function StateFlowSection() {
   const { config } = useAzureConfig()
   const { iteration, workItems, hiddenIds } = useSprintAnalysis()
@@ -172,14 +175,14 @@ function StateFlowSection() {
     // Itens com tag Delayed ficam na sprint da tag; o início conhecido é só o desta iteration.
     const startOf = (sprintLabel: string) => (sprintLabel === label ? (iteration?.attributes.startDate ?? undefined) : undefined)
     const withHistory = rows.map((row) => ({ ...row, stateHistory: history.data?.get(row.id) }))
-    return { items: itemFlows(withHistory, startOf), timelines: itemTimelines(withHistory) }
+    return { items: itemFlows(withHistory, startOf), timelines: itemTimelines(withHistory.filter((row) => !NOT_STARTED_STATES.has(normalizeKey(row.state)))) }
   }, [history.data, rows, iteration])
 
   if (!flow) {
     return (
       <ChartCard
         title="Fluxo de estados"
-        description="Quando os itens entraram em Active e quanto levaram (dias úteis) até Testing QA, Testing Prod e Done, o tempo em On Hold e as idas a Fail. Busca o histórico de cada item no Azure."
+        description="Quando os itens entraram em Active e quanto levaram (dias úteis) até Testing QA, MR Prod, Testing Prod e Done, o tempo em On Hold e as idas a Fail. Busca o histórico de cada item no Azure."
       >
         {requested ? (
           <RequestState
@@ -348,7 +351,10 @@ function SprintAnalysisContent() {
         onRetry={refresh}
       >
         {pageView === 'daily' ? (
-          <DailySection />
+          <>
+            <StateFlowSection />
+            <DailySection />
+          </>
         ) : (
         <>
         <SprintKpis metrics={metrics} workItemsCount={workItems.data?.length ?? 0} membersCount={members.data?.length ?? 0} />

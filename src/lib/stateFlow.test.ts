@@ -65,7 +65,7 @@ describe('itemFlow', () => {
     expect(itemFlow(WITH_FAILS, SPRINT_START, TODAY)).toMatchObject({
       activeAt: at(4),
       sprintToActive: TO_ACTIVE_ON_4,
-      toMilestone: { testingQa: 3, testingProd: 7, done: 8 },
+      toMilestone: { testingQa: 3, mrProd: null, testingProd: 7, done: 8 },
       onHoldDays: 0,
       fails: 2,
     })
@@ -74,7 +74,7 @@ describe('itemFlow', () => {
   it('aceita Doing como Active, soma On Hold e deixa null o marco não alcançado', () => {
     expect(itemFlow(WITH_HOLD, SPRINT_START, TODAY)).toMatchObject({
       activeAt: at(3),
-      toMilestone: { testingQa: null, testingProd: null, done: 5 },
+      toMilestone: { testingQa: null, mrProd: null, testingProd: null, done: 5 },
       onHoldDays: 2,
       fails: 0,
     })
@@ -85,7 +85,7 @@ describe('itemFlow', () => {
     expect(itemFlow(NEVER_ACTIVE, SPRINT_START, TODAY)).toMatchObject({
       activeAt: null,
       sprintToActive: null,
-      toMilestone: { testingQa: null, testingProd: null, done: null },
+      toMilestone: { testingQa: null, mrProd: null, testingProd: null, done: null },
     })
     expect(itemFlow(NO_HISTORY, SPRINT_START, TODAY)).toBeNull()
   })
@@ -136,6 +136,7 @@ describe('stageSummary', () => {
       stages: {
         active: { avgDays: 5, items: 3 },
         testingQa: { avgDays: 2, items: 1 },
+        mrProd: { avgDays: null, items: 0 },
         testingProd: { avgDays: 1, items: 1 },
       },
       cycle: { avgDays: 5.5, items: 2 },
